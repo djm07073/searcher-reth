@@ -1,0 +1,45 @@
+[package]
+name = "searcher-reth-executor"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# reth
+reth-chainspec.workspace = true
+reth-evm.workspace = true
+reth-execution-errors.workspace = true
+reth-execution-types.workspace = true
+reth-exex.workspace = true
+reth-node-api.workspace = true
+reth-node-ethereum.workspace = true
+reth-primitives.workspace = true
+reth-provider.workspace = true
+reth-revm.workspace = true
+reth-tracing.workspace = true
+reth.workspace = true
+
+# alloy
+alloy-consensus = { workspace = true, features = ["k256"] }
+alloy-eips.workspace = true
+alloy-genesis.workspace = true
+alloy-primitives.workspace = true
+alloy-rlp.workspace = true
+alloy-sol-types.workspace = true
+
+# async
+futures-util.workspace = true
+tokio.workspace = true
+
+# misc
+eyre.workspace = true
+foundry-blob-explorers.workspace = true
+once_cell = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1"
+
+[dev-dependencies]
+reth-testing-utils.workspace = true
+secp256k1.workspace = true
+reth-transaction-pool = { workspace = true, features = ["test-utils"] }
