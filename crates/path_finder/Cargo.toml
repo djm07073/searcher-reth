@@ -1,5 +1,5 @@
 [package]
-name = "searcher-reth-exex"
+name = "searcher-reth-path-finder"
 version = "0.0.0"
 publish = false
 edition.workspace = true

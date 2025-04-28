@@ -9217,14 +9217,54 @@ dependencies = [
  "reth-tracing",
  "reth-transaction-pool",
  "rusqlite",
- "searcher-reth-exex",
+ "searcher-reth-extension",
+ "searcher-reth-path-finder",
  "secp256k1",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "searcher-reth-exex"
+name = "searcher-reth-extension"
+version = "0.0.0"
+dependencies = [
+ "alloy-consensus 0.13.0",
+ "alloy-eips 0.13.0",
+ "alloy-genesis 0.13.0",
+ "alloy-primitives 0.8.25",
+ "alloy-rlp",
+ "alloy-sol-types 0.8.25",
+ "clap",
+ "eyre",
+ "foundry-blob-explorers",
+ "futures-util",
+ "jsonrpsee",
+ "once_cell",
+ "reth",
+ "reth-chainspec",
+ "reth-evm",
+ "reth-execution-errors",
+ "reth-execution-types",
+ "reth-exex",
+ "reth-node-api",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-provider",
+ "reth-revm",
+ "reth-testing-utils",
+ "reth-tracing",
+ "reth-transaction-pool",
+ "revm",
+ "rusqlite",
+ "searcher-reth-path-finder",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "searcher-reth-path-finder"
 version = "0.0.0"
 dependencies = [
  "alloy-consensus 0.13.0",

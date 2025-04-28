@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth", "crates/exex"]
+members = ["bin/searcher-reth", "crates/extension","crates/path_finder"]
 resolver = "2"
 
 [workspace.package]
@@ -12,7 +12,8 @@ publish = false
 [workspace.dependencies]
 #searcher
 searcher-reth = { path = "bin/searcher-reth" }
-searcher-reth-exex = { path = "crates/exex" }
+searcher-reth-path-finder = { path = "crates/path_finder" }
+searcher-reth-extension = { path = "crates/extension" }
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12", features = ["full"] }
@@ -73,7 +74,3 @@ eyre = "0.6"
 # testing
 reth-exex-test-utils = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }
 reth-testing-utils = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }
-
-
-#[patch.crates-io]
-#revm-inspectors = { git = "https://github.com/paradigmxyz/revm-inspectors", rev = "667180b" }

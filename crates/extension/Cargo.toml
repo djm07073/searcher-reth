@@ -1,11 +1,12 @@
 [package]
-name = "searcher-reth-executor"
+name = "searcher-reth-extension"
 version = "0.0.0"
 publish = false
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+
 # reth
 reth-chainspec.workspace = true
 reth-evm.workspace = true
@@ -38,6 +39,11 @@ foundry-blob-explorers.workspace = true
 once_cell = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde_json = "1"
+serde.workspace = true
+searcher-reth-path-finder.workspace = true
+jsonrpsee = "0.24.9"
+revm = "22.0.1"
+clap = "4.5.37"
 
 [dev-dependencies]
 reth-testing-utils.workspace = true
