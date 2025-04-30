@@ -3,15 +3,14 @@ pub mod exex;
 mod database;
 
 use eyre::{ Error, Result };
-use clap::Args;
 use revm::{ primitives::Bytes, state::Bytecode };
 use searcher_reth_path_finder::RoutePath;
+use clap::Args;
 
-// impl of WithLaunchContext
 #[derive(Debug, Clone, Args)]
-pub struct SearcherExtensionArgs {
+pub struct SetupArgs {
     #[clap(long = "bytecode", default_value = "")]
-    pub bytecode: Option<String>,
+    pub bytecode: String,
 
     #[clap(long = "max-profit", default_value = "1000")] // 0.001%
     pub max_profit: Option<u64>,
@@ -28,13 +27,9 @@ pub struct SearcherExtension {
 }
 
 impl SearcherExtension {
-    pub fn new(args: SearcherExtensionArgs) -> Result<Self, Error> {
-        let bytes = if let Some(bytecode) = args.bytecode {
-            Bytes::from(bytecode.as_str())
-        } else {
-            Bytes::default()
-        };
-        let bytecode = Bytecode::new_raw_checked(bytes).unwrap();
+    pub fn new(args: SetupArgs) -> Result<Self, Error> {
+        let bytecode = args.bytecode.clone();
+        let bytecode = Bytecode::new_raw_checked(Bytes(bytecode.into())).unwrap();
         // TODO: fetch the tokens and dexs from database and make paths for routing.
         let route_paths = vec![];
         Ok(Self {

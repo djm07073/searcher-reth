@@ -9198,6 +9198,7 @@ dependencies = [
  "alloy-primitives 0.8.25",
  "alloy-rlp",
  "alloy-sol-types 0.8.25",
+ "clap",
  "eyre",
  "foundry-blob-explorers",
  "futures-util",
