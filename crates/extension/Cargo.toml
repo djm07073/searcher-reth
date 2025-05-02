@@ -44,6 +44,7 @@ searcher-reth-path-finder.workspace = true
 jsonrpsee = "0.24.9"
 revm = "22.0.1"
 clap = "4.5.37"
+searcher-reth-repository.workspace = true
 
 [dev-dependencies]
 reth-testing-utils.workspace = true

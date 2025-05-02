@@ -13,6 +13,7 @@ use reth_provider::{
     StateCommitmentProvider,
 };
 use searcher_reth_path_finder::PathFinder;
+use tokio::sync::RwLock;
 
 use crate::SearcherExtension;
 
@@ -22,7 +23,7 @@ pub struct SearcherExEx;
 impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
-        extension: Arc<SearcherExtension>
+        extension: Arc<RwLock<SearcherExtension>>
     )
         -> Result<impl Future<Output = Result<()>>>
         where
@@ -31,6 +32,7 @@ impl SearcherExEx {
                 StateCommitmentProvider
     {
         Ok(async move {
+            let extension = extension.read().await;
             let bytecode = extension.contract.clone();
             let route_paths = extension.route_paths.clone();
 
@@ -39,7 +41,6 @@ impl SearcherExEx {
                     Ok(ExExNotification::ChainCommitted { new: chain }) => {
                         let block = chain.tip();
                         let num_hash = block.num_hash();
-                        // TODO if bytecode is zero. skipped
                         if bytecode.clone().is_empty() {
                             ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                             continue;

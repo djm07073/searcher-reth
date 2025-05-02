@@ -1,11 +1,6 @@
 use alloy_sol_types::SolValue;
 use eyre::Error;
-use reth_provider::{
-    BlockHashReader,
-    DBProvider,
-    LatestStateProviderRef,
-    StateCommitmentProvider,
-};
+use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{
     context::{ BlockEnv, CfgEnv, Evm, TxEnv },
     database::StateProviderDatabase,
@@ -31,7 +26,7 @@ sol! {
 }
 pub type DexType = u8;
 pub type RoutePath = Vec<Hop>; // dex type, swap_router, src token ,dst token
-pub(crate) const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
+const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 
 type PathFinderCtx<'a, DB> = Context<
     BlockEnv,

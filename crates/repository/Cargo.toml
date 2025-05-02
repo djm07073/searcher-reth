@@ -1,0 +1,17 @@
+[package]
+name = "searcher-reth-repository"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+
+
+
+[dependencies]
+reth-revm.workspace = true
+eyre.workspace = true
+
+
+sqlx = { version = "0.8.5", features = ["postgres"] }
+searcher-reth-path-finder.workspace = true
+

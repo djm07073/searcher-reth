@@ -4,34 +4,45 @@ use eyre::eyre;
 use clap::Parser;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
-use searcher_reth_extension::{
-    exex::SearcherExEx,
-    rpc::{ SearcherRpc, SearcherRpcApiServer },
-    SearcherExtension,
-    SetupArgs,
-};
+use searcher_reth_extension::{ exex::SearcherExEx, SearcherExtension, SetupArgs };
+use searcher_reth_repository::SearcherRepository;
+use searcher_reth_rpc::{ SearcherRpc, SearcherRpcApiServer };
+use tokio::sync::RwLock;
 
 fn main() -> eyre::Result<()> {
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
-        let extension = Arc::new(SearcherExtension::new(args).unwrap());
+        let chain_id = builder.config().chain.chain.id();
+        let database = Arc::new(SearcherRepository::new(&args.database_url).await?);
+        let extension = Arc::new(RwLock::new(SearcherExtension::new(args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
         let handle = builder
             .node(EthereumNode::default())
             .extend_rpc_modules(move |ctx| {
-                let provider = ctx.provider().clone();
-                let searcher_rpc = std::thread
-                    ::spawn(move || SearcherRpc::new(provider, extension_for_rpc))
+                let searcher_rpc: SearcherRpc = std::thread
+                    ::spawn(move || {
+                        let rt = tokio::runtime::Runtime
+                            ::new()
+                            .expect("failed to spawn blocking runtime");
+                        rt.block_on(SearcherRpc::new(chain_id, extension_for_rpc, database.clone()))
+                    })
                     .join()
-                    .map_err(|_| eyre!("failed to join SearcherRpc thread"))?;
+                    .map_err(|_| eyre!("failed to join ShadowRpc thread"))
+                    .unwrap();
+                // TODO: change to auth merge
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
                     .map_err(|e| eyre!("failed to extend w/ SearcherRpc: {e}"))?;
+                println!("RPC module extended successfully");
                 Ok(())
             })
             .install_exex("SearcherExEx", {
-                move |ctx| { SearcherExEx::exex(ctx, extension_for_exex) }
+                move |ctx| {
+                    let exex = SearcherExEx::exex(ctx, extension_for_exex);
+                    println!("SearcherExEx installed successfully");
+                    exex
+                }
             })
             .launch().await?;
 

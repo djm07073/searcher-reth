@@ -1,0 +1,20 @@
+[package]
+name = "searcher-reth-rpc"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reth-revm.workspace = true
+tokio.workspace = true
+
+# misc
+eyre.workspace = true
+serde_json = "1"
+serde.workspace = true
+searcher-reth-path-finder.workspace = true
+jsonrpsee = "0.24.9"
+clap = "4.5.37"
+searcher-reth-repository.workspace = true
+searcher-reth-extension.workspace = true

@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth", "crates/extension","crates/path_finder"]
+members = ["bin/searcher-reth", "crates/extension","crates/path_finder", "crates/repository", "crates/rpc"]
 resolver = "2"
 
 [workspace.package]
@@ -14,6 +14,8 @@ publish = false
 searcher-reth = { path = "bin/searcher-reth" }
 searcher-reth-path-finder = { path = "crates/path_finder" }
 searcher-reth-extension = { path = "crates/extension" }
+searcher-reth-repository = { path = "crates/repository" }
+searcher-reth-rpc = { path = "crates/rpc" }
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12", features = ["full"] }
