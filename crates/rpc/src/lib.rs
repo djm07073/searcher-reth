@@ -3,8 +3,9 @@ use std::sync::Arc;
 use jsonrpsee::{ core::{ async_trait, RpcResult }, proc_macros::rpc };
 use reth_revm::primitives::Address;
 use searcher_reth_extension::SearcherExtension;
-use searcher_reth_path_finder::{ DexType, RoutePath };
-use searcher_reth_repository::{ types::Priority, SearcherRepository };
+use searcher_reth_path_finder::get_cycle_route_paths;
+use searcher_reth_repository::SearcherRepository;
+use searcher_reth_types::DexType;
 use serde::{ Deserialize, Serialize };
 use tokio::sync::RwLock;
 
@@ -59,7 +60,7 @@ impl SearcherRpc {
     ) -> Self {
         let dexs = repo.get_all_dexs(chain_id).await.unwrap();
         let tokens = repo.get_all_tokens(chain_id).await.unwrap();
-        let route_paths = get_route_paths(dexs, tokens);
+        let route_paths = get_cycle_route_paths(dexs, tokens);
         extension.write().await.update_route_paths(route_paths);
         Self { chain_id, extension, repo }
     }
@@ -103,16 +104,4 @@ impl SearcherRpcApiServer for SearcherRpc {
         self.extension.write().await.update_route_paths(route_paths);
         Ok(())
     }
-}
-
-fn get_route_paths(dexs: Vec<(Address, u8)>, tokens: Vec<(Address, Priority)>) -> Vec<RoutePath> {
-    let mut route_paths = Vec::new();
-
-    for (dex_address, _) in dexs {
-        for (token_address, priority) in &tokens {
-            todo!();
-        }
-    }
-
-    route_paths
 }

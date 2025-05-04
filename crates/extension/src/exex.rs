@@ -57,7 +57,7 @@ impl SearcherExEx {
                             extension.max_profit_ratio,
                             extension.min_profit_ratio
                         )?;
-                        // transfer the optimal paths to trading bot in non-blocking way
+                        // TODO: transfer the optimal paths to trading bot in non-blocking way
 
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                     }

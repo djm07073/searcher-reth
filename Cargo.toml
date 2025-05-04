@@ -1,21 +1,23 @@
 [workspace]
-members = ["bin/searcher-reth", "crates/extension","crates/path_finder", "crates/repository", "crates/rpc"]
+members = ["bin/searcher-reth", "crates/extension","crates/path_finder", "crates/repository", "crates/rpc", "crates/types", "crates/migration"]
 resolver = "2"
-
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-#searcher
+#searcher-reth
 searcher-reth = { path = "bin/searcher-reth" }
 searcher-reth-path-finder = { path = "crates/path_finder" }
 searcher-reth-extension = { path = "crates/extension" }
 searcher-reth-repository = { path = "crates/repository" }
 searcher-reth-rpc = { path = "crates/rpc" }
+searcher-reth-types = { path = "crates/types" }
+migration = {path = "crates/migration" }
+
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12", features = ["full"] }
@@ -49,8 +51,8 @@ alloy-rpc-types = { version = "0.13", features = [
 alloy-signer = { version = "0.13", default-features = false }
 alloy-signer-local = { version = "0.13", default-features = false }
 
-alloy-primitives = { version = "0.8", default-features = false }
-alloy-sol-types  = { version = "0.8", features = ["json"] }
+alloy-primitives = { version = "1.1", default-features = false }
+alloy-sol-types  = { version = "1.1", features = ["json"] }
 foundry-blob-explorers = "0.12"
 
 discv5 = "0.9"

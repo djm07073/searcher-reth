@@ -1,59 +1,68 @@
-// ! update tokens and dexs
-mod orm;
-pub mod types;
+mod entity;
 
 use eyre::Result;
 use reth_revm::primitives::Address;
-use searcher_reth_path_finder::DexType;
-use sqlx::{ postgres::PgPoolOptions, PgPool, Row, Transaction };
-use types::Priority;
+use sea_orm::{ QueryOrder, TransactionTrait };
+use sea_orm::{
+    DatabaseConnection,
+    Database,
+    EntityTrait,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    QueryFilter,
+    ColumnTrait,
+};
+use entity::prelude::*;
+use entity::{ token, dex, contract };
+use searcher_reth_types::{ DexType, Priority };
+
+use migration::{ Migrator, MigratorTrait };
 
 pub struct SearcherRepository {
-    pool: PgPool,
+    conn: DatabaseConnection,
 }
 
 impl SearcherRepository {
     pub async fn new(database_url: &str) -> Result<Self> {
-        let pool = PgPoolOptions::new().max_connections(5).connect(database_url).await?;
-        Ok(Self { pool })
+        let conn = Database::connect(database_url).await?;
+
+        Migrator::up(&conn, None).await?;
+
+        Ok(Self { conn })
     }
 
     pub async fn get_all_tokens(&self, chain_id: u64) -> Result<Vec<(Address, Priority)>> {
-        let rows = sqlx
-            ::query(
-                "SELECT address, priority, chain_id FROM tokens WHERE chain_id = $1 ORDER BY priority DESC"
-            )
-            .bind(chain_id as i64)
-            .fetch_all(&self.pool).await?;
+        let tokens = Token::find()
+            .filter(token::Column::ChainId.eq(chain_id as i64))
+            .order_by_asc(token::Column::Priority)
+            .all(&self.conn).await?;
 
-        let tokens = rows
+        let result = tokens
             .into_iter()
-            .map(|row| {
-                let addr: Address = row.get::<String, _>("address").parse().unwrap();
-                let priority = row.get::<i64, _>("priority");
-                (addr, Priority::from(priority))
+            .map(|token| {
+                let addr: Address = token.address.parse().unwrap();
+                (addr, token.priority.into())
             })
             .collect();
 
-        Ok(tokens)
+        Ok(result)
     }
 
     pub async fn get_all_dexs(&self, chain_id: u64) -> Result<Vec<(Address, DexType)>> {
-        let rows = sqlx
-            ::query("SELECT address, dex_type FROM dexs WHERE chain_id = $1")
-            .bind(chain_id as i64)
-            .fetch_all(&self.pool).await?;
+        let dexs = Dex::find()
+            .filter(dex::Column::ChainId.eq(chain_id as i64))
+            .all(&self.conn).await?;
 
-        let dexs = rows
+        let result = dexs
             .into_iter()
-            .map(|row| {
-                let addr: Address = row.get::<String, _>("address").parse().unwrap();
-                let dex_type = row.get::<i64, _>("dex_type");
+            .map(|dex| {
+                let addr: Address = dex.address.parse().unwrap();
+                let dex_type = dex.dex_type.parse::<i64>().unwrap();
                 (addr, dex_type as DexType)
             })
             .collect();
 
-        Ok(dexs)
+        Ok(result)
     }
 
     pub async fn update_route_paths(
@@ -64,120 +73,75 @@ impl SearcherRepository {
         new_dexs: &Option<Vec<(DexType, Address)>>,
         deprecated_dexs: &Option<Vec<Address>>
     ) -> Result<()> {
-        let mut txn = self.pool.begin().await?;
+        let txn = self.conn.begin().await?;
 
-        self.insert_tokens(&mut txn, chain_id, new_tokens).await?;
-        self.delete_tokens(&mut txn, chain_id, deprecated_tokens).await?;
-        self.insert_dexs(&mut txn, chain_id, new_dexs).await?;
-        self.delete_dexs(&mut txn, chain_id, deprecated_dexs).await?;
+        if let Some(tokens) = new_tokens {
+            for (address, priority) in tokens {
+                let token = token::ActiveModel {
+                    chain_id: Set(chain_id as i64),
+                    address: Set(address.to_string()),
+                    priority: Set(*priority as i64),
+                };
+                token.insert(&txn).await?;
+            }
+        }
+
+        if let Some(tokens) = deprecated_tokens {
+            for address in tokens {
+                Token::delete_many()
+                    .filter(
+                        token::Column::ChainId
+                            .eq(chain_id as i64)
+                            .and(token::Column::Address.eq(address.to_string()))
+                    )
+                    .exec(&txn).await?;
+            }
+        }
+
+        if let Some(dexs) = new_dexs {
+            for (dex_type, address) in dexs {
+                let dex = dex::ActiveModel {
+                    chain_id: Set(chain_id as i64),
+                    address: Set(address.to_string()),
+                    dex_type: Set((*dex_type as i64).to_string()),
+                };
+                dex.insert(&txn).await?;
+            }
+        }
+
+        if let Some(dexs) = deprecated_dexs {
+            for address in dexs {
+                Dex::delete_many()
+                    .filter(
+                        dex::Column::ChainId
+                            .eq(chain_id as i64)
+                            .and(dex::Column::Address.eq(address.to_string()))
+                    )
+                    .exec(&txn).await?;
+            }
+        }
 
         txn.commit().await?;
-
-        Ok(())
-    }
-
-    async fn insert_tokens(
-        &self,
-        txn: &mut Transaction<'_, sqlx::Postgres>,
-        chain_id: u64,
-        tokens: &Option<Vec<(Address, u64)>>
-    ) -> Result<()> {
-        if let Some(tokens) = tokens {
-            for (address, priority) in tokens {
-                sqlx
-                    ::query(
-                        "INSERT INTO tokens (chain_id, address, priority)
-                     VALUES ($1, $2, $3)
-                     ON CONFLICT (chain_id, address) DO UPDATE SET priority = $3"
-                    )
-                    .bind(chain_id as i64)
-                    .bind(address.to_string())
-                    .bind(*priority as i64)
-                    .execute(&mut **txn).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn insert_dexs(
-        &self,
-        txn: &mut Transaction<'_, sqlx::Postgres>,
-        chain_id: u64,
-        dexs: &Option<Vec<(DexType, Address)>>
-    ) -> Result<()> {
-        if let Some(dexs) = dexs {
-            for (dex_type, address) in dexs {
-                sqlx
-                    ::query(
-                        "INSERT INTO dexs (chain_id, address, dex_type)
-                     VALUES ($1, $2, $3)
-                     ON CONFLICT (chain_id, address) DO UPDATE SET dex_type = $3"
-                    )
-                    .bind(chain_id as i64)
-                    .bind(address.to_string())
-                    .bind(*dex_type as i64)
-                    .execute(&mut **txn).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn delete_tokens(
-        &self,
-        txn: &mut Transaction<'_, sqlx::Postgres>,
-        chain_id: u64,
-        tokens: &Option<Vec<Address>>
-    ) -> Result<()> {
-        if let Some(tokens) = tokens {
-            for address in tokens {
-                sqlx
-                    ::query("DELETE FROM tokens WHERE chain_id = $1 AND address = $2")
-                    .bind(chain_id as i64)
-                    .bind(address.to_string())
-                    .execute(&mut **txn).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn delete_dexs(
-        &self,
-        txn: &mut Transaction<'_, sqlx::Postgres>,
-        chain_id: u64,
-        dexs: &Option<Vec<Address>>
-    ) -> Result<()> {
-        if let Some(dexs) = dexs {
-            for address in dexs {
-                sqlx
-                    ::query("DELETE FROM dexs WHERE chain_id = $1 AND address = $2")
-                    .bind(chain_id as i64)
-                    .bind(address.to_string())
-                    .execute(&mut **txn).await?;
-            }
-        }
         Ok(())
     }
 
     pub async fn insert_contract(&self, chain_id: u64, contract_code: String) -> Result<()> {
-        sqlx
-            ::query(
-                "INSERT INTO contracts (chain_id, code) VALUES ($1, $2)
-                     ON CONFLICT (chain_id) DO UPDATE SET code = $2"
-            )
-            .bind(chain_id as i64)
-            .bind(contract_code)
-            .execute(&self.pool).await?;
-
+        let contract = contract::ActiveModel {
+            chain_id: Set(chain_id as i64),
+            code: Set(contract_code),
+        };
+        contract.insert(&self.conn).await?;
         Ok(())
     }
 
     pub async fn update_contract(&self, chain_id: u64, contract_code: String) -> Result<()> {
-        sqlx
-            ::query("UPDATE contracts SET code = $1 WHERE chain_id = $2")
-            .bind(contract_code)
-            .bind(chain_id as i64)
-            .execute(&self.pool).await?;
-
+        let contract = contract::ActiveModel {
+            chain_id: Set(chain_id as i64),
+            code: Set(contract_code),
+        };
+        Contract::update(contract)
+            .filter(contract::Column::ChainId.eq(chain_id as i64))
+            .exec(&self.conn).await?;
         Ok(())
     }
 }

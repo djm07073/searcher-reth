@@ -2,8 +2,9 @@ pub mod exex;
 
 use eyre::{ Error, Result };
 use revm::{ primitives::Bytes, state::Bytecode };
-use searcher_reth_path_finder::RoutePath;
+
 use clap::Args;
+use searcher_reth_types::RoutePath;
 
 pub struct SearcherExtension {
     pub(crate) contract: Bytecode,

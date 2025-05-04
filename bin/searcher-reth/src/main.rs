@@ -12,8 +12,9 @@ use tokio::sync::RwLock;
 fn main() -> eyre::Result<()> {
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
+        let db_path = builder.config().datadir().db().join("searcher.db");
         let chain_id = builder.config().chain.chain.id();
-        let database = Arc::new(SearcherRepository::new(&args.database_url).await?);
+        let database = Arc::new(SearcherRepository::new(db_path.to_str().unwrap()).await?);
         let extension = Arc::new(RwLock::new(SearcherExtension::new(args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
