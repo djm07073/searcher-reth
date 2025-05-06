@@ -12,10 +12,9 @@ use reth_provider::{
     LatestStateProviderRef,
     StateCommitmentProvider,
 };
-use searcher_reth_path_finder::PathFinder;
 use tokio::sync::RwLock;
 
-use crate::SearcherExtension;
+use crate::{ strategy::path_finder::{ PathFinder, searcher::Strategy }, SearcherExtension };
 
 pub struct SearcherExEx;
 
@@ -52,11 +51,12 @@ impl SearcherExEx {
                         let latest_state_provider = LatestStateProviderRef::new(&database_provider);
                         // create a task to simulate contract execution in searcher executor parallel
                         let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
-                        let optimal_paths = finder.find_optimal_paths(
+                        let optimal_paths = finder.filter_candidates(
                             route_paths.clone(),
                             extension.max_profit_ratio,
                             extension.min_profit_ratio
                         )?;
+                    
                         // TODO: transfer the optimal paths to trading bot in non-blocking way
 
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;

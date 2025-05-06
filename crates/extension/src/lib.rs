@@ -1,10 +1,11 @@
 pub mod exex;
+pub mod strategy;
 
 use eyre::{ Error, Result };
 use revm::{ primitives::Bytes, state::Bytecode };
 
 use clap::Args;
-use searcher_reth_types::RoutePath;
+use strategy::path_finder::types::RoutePath;
 
 pub struct SearcherExtension {
     pub(crate) contract: Bytecode,

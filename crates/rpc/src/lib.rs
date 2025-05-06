@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use jsonrpsee::{ core::{ async_trait, RpcResult }, proc_macros::rpc };
 use reth_revm::primitives::Address;
-use searcher_reth_extension::SearcherExtension;
-use searcher_reth_path_finder::get_cycle_route_paths;
+use searcher_reth_extension::{
+    strategy::path_finder::candidates::get_candidates,
+    SearcherExtension,
+};
 use searcher_reth_repository::SearcherRepository;
 use searcher_reth_types::DexType;
 use serde::{ Deserialize, Serialize };
@@ -60,7 +62,7 @@ impl SearcherRpc {
     ) -> Self {
         let dexs = repo.get_all_dexs(chain_id).await.unwrap();
         let tokens = repo.get_all_tokens(chain_id).await.unwrap();
-        let route_paths = get_cycle_route_paths(dexs, tokens);
+        let route_paths = get_candidates(dexs, tokens);
         extension.write().await.update_route_paths(route_paths);
         Self { chain_id, extension, repo }
     }
