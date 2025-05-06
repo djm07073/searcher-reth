@@ -22,6 +22,9 @@ pub struct SetupArgs {
     #[clap(long = "bytecode", default_value = "")]
     pub bytecode: String,
 
+    #[clap(long = "socket-path", default_value = "/tmp/ipc_socket")]
+    pub socket_path: String,
+
     #[clap(long = "max-profit", default_value = "1000")] // 0.001%
     pub max_profit: Option<u64>,
 

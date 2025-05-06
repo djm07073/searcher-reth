@@ -4,7 +4,7 @@ use eyre::Error;
 use reth_provider::{ BlockHashReader, DBProvider, StateCommitmentProvider };
 use reth_revm::SystemCallEvm;
 
-use crate::strategy::path_finder::types::DEPLOYED_ADDRESS;
+use crate::strategy::path_finder::types::{ Profit, DEPLOYED_ADDRESS };
 
 use super::{ types::RoutePath, PathFinder };
 
@@ -44,16 +44,19 @@ impl<'a, DB> Strategy
         min_profit: u64
     ) -> Result<Vec<RoutePath>, Error> {
         let mut optimal_paths = Vec::<RoutePath>::new();
+        // TODO: use parallel core
         // get native token price. ex. BERA/USDC
         while let Some(route_path) = route_paths.iter().next() {
             let result = self.evm
                 .transact_system_call(route_path.abi_encode().into(), DEPLOYED_ADDRESS)
                 .unwrap();
-            // extract gas used and output amount
-            let gas_used = result.result.gas_used();
-            let net_profit = result.result.output().unwrap();
-            // calculate net profit
-            // net profit > max_profit
+            // amount
+            let Profit { amount } = Profit::abi_decode(result.result.output().unwrap())?;
+
+            let net_profit = amount;
+            // if max profit / 1e6 < net_profit,  push optimal_paths.push(route_path) and break
+            // else if min profit / 1e6 < net_profit, push optimal_paths.push(route_path);
+            // else continue
             todo!();
         }
 

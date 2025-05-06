@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 
 use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
 use reth_node_api::{ FullNodeComponents, FullNodeTypes };
-
+use alloy_sol_types::SolValue;
 use reth_provider::{
     BlockHashReader,
     DatabaseProviderFactory,
@@ -13,7 +13,7 @@ use reth_provider::{
     StateCommitmentProvider,
 };
 use tokio::sync::RwLock;
-
+use tokio::net::UnixDatagram;
 use crate::{ strategy::path_finder::{ PathFinder, searcher::Strategy }, SearcherExtension };
 
 pub struct SearcherExEx;
@@ -22,7 +22,8 @@ pub struct SearcherExEx;
 impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
-        extension: Arc<RwLock<SearcherExtension>>
+        extension: Arc<RwLock<SearcherExtension>>,
+        sock: Arc<UnixDatagram>
     )
         -> Result<impl Future<Output = Result<()>>>
         where
@@ -56,9 +57,14 @@ impl SearcherExEx {
                             extension.max_profit_ratio,
                             extension.min_profit_ratio
                         )?;
-                    
-                        // TODO: transfer the optimal paths to trading bot in non-blocking way
 
+                        let encoded_paths = optimal_paths.abi_encode();
+
+                        let sock = sock.clone();
+                        tokio::spawn(async move {
+                            sock.send(&encoded_paths).await.unwrap();
+                        });
+                        // transfer optimal_paths to the socket
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                     }
                     _ => {}
