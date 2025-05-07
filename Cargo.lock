@@ -10144,7 +10144,6 @@ dependencies = [
  "rusqlite",
  "sea-orm",
  "searcher-reth-repository",
- "searcher-reth-types",
  "secp256k1",
  "serde",
  "serde_json",
@@ -10159,7 +10158,6 @@ dependencies = [
  "migration",
  "reth-revm",
  "sea-orm",
- "searcher-reth-types",
  "tokio",
 ]
 
@@ -10173,17 +10171,9 @@ dependencies = [
  "reth-revm",
  "searcher-reth-extension",
  "searcher-reth-repository",
- "searcher-reth-types",
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "searcher-reth-types"
-version = "0.0.0"
-dependencies = [
- "alloy-sol-types 1.1.0",
 ]
 
 [[package]]

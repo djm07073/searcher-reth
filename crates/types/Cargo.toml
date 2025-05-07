@@ -1,9 +1,0 @@
-[package]
-name = "searcher-reth-types"
-version = "0.0.0"
-publish = false
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-alloy-sol-types.workspace  = true

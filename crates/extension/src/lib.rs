@@ -5,7 +5,7 @@ use eyre::{ Error, Result };
 use revm::{ primitives::Bytes, state::Bytecode };
 
 use clap::Args;
-use strategy::path_finder::types::RoutePath;
+use strategy::path_finding::types::RoutePath;
 
 pub struct SearcherExtension {
     pub(crate) contract: Bytecode,

@@ -4,7 +4,7 @@ use eyre::Error;
 use reth_provider::{ BlockHashReader, DBProvider, StateCommitmentProvider };
 use reth_revm::SystemCallEvm;
 
-use crate::strategy::path_finder::types::{ Profit, DEPLOYED_ADDRESS };
+use crate::strategy::path_finding::types::{ Profit, DEPLOYED_ADDRESS };
 
 use super::{ types::RoutePath, PathFinder };
 

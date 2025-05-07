@@ -14,7 +14,7 @@ use reth_provider::{
 };
 use tokio::sync::RwLock;
 use tokio::net::UnixDatagram;
-use crate::{ strategy::path_finder::{ PathFinder, searcher::Strategy }, SearcherExtension };
+use crate::{ strategy::path_finding::{ PathFinder, strategy::Strategy }, SearcherExtension };
 
 pub struct SearcherExEx;
 

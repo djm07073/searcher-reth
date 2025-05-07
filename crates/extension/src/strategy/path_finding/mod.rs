@@ -1,6 +1,6 @@
-pub mod searcher;
+pub mod strategy;
 pub mod types;
-pub mod candidates;
+pub mod candidate;
 
 use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{

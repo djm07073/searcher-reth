@@ -1,7 +1,7 @@
 use alloy_primitives::Address;
 
 use itertools::{ Either, Itertools };
-use searcher_reth_types::Priority;
+use searcher_reth_repository::types::Priority;
 
 use super::types::{Hop, RoutePath};
 

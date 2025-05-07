@@ -45,7 +45,7 @@ jsonrpsee = "0.24.9"
 revm = "22.0.1"
 clap = "4.5.37"
 searcher-reth-repository.workspace = true
-searcher-reth-types.workspace = true
+
 
 sea-orm = { version = "1.1.0", features = [ "sqlx-sqlite", "runtime-tokio-native-tls", "macros" ] }
 

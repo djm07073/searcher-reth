@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use jsonrpsee::{ core::{ async_trait, RpcResult }, proc_macros::rpc };
+use jsonrpsee::{ core::{ async_trait, RpcResult }, proc_macros::rpc, tracing::info };
 use reth_revm::primitives::Address;
 use searcher_reth_extension::{
-    strategy::path_finder::candidates::get_candidates,
+    strategy::path_finding::candidate::get_candidates,
     SearcherExtension,
 };
-use searcher_reth_repository::SearcherRepository;
-use searcher_reth_types::DexType;
+use searcher_reth_repository::{types::DexType, SearcherRepository};
 use serde::{ Deserialize, Serialize };
 use tokio::sync::RwLock;
 
@@ -27,7 +26,7 @@ pub struct UpdateProfitRateParameters {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateRoutePathParameters {
-    pub new_tokens: Option<Vec<(Address, u64)>>,
+    pub new_tokens: Option<Vec<(Address, i64)>>,
     pub deprecated_tokens: Option<Vec<Address>>,
     pub new_dexs: Option<Vec<(DexType, Address)>>,
     pub deprecated_dexs: Option<Vec<Address>>,
@@ -78,32 +77,60 @@ impl SearcherRpc {
 impl SearcherRpcApiServer for SearcherRpc {
     async fn update_code(&self, params: UpdateCodeParameters) -> RpcResult<()> {
         // update repository
-        self.repo.update_contract(self.chain_id, params.bytecode.clone()).await.unwrap();
-        // update extension
+        let repo = self.repo.clone();
+        let chain_id = self.chain_id;
+        let bytecode = params.bytecode.clone();
         self.extension.write().await.update_contract(params.bytecode);
+        let _ = tokio::task::spawn(async move {
+            let _bytecode = bytecode.clone();
+            repo.update_contract(chain_id, bytecode).await.unwrap();
+            info!(
+                target: "searcher_rpc",
+                bytecode = ?_bytecode
+            );
+        }).await;
+
         Ok(())
     }
 
     async fn update_profit_rate(&self, params: UpdateProfitRateParameters) -> RpcResult<()> {
         // only update extension
+        info!(
+                target: "searcher_rpc",
+                min_profit = ?params.min_profit,
+                max_profit = ?params.max_profit
+            );
         self.extension.write().await.update_profit_rate(params.min_profit, params.max_profit);
         Ok(())
     }
 
     async fn update_route_paths(&self, params: UpdateRoutePathParameters) -> RpcResult<()> {
-        // Implement the logic to update the configuration of dex and tokens
-        let route_paths = vec![];
-        // update repository
-        self.repo
-            .update_route_paths(
-                self.chain_id,
+        let repo = self.repo.clone();
+        let extension = self.extension.clone();
+        let chain_id = self.chain_id;
+        let _ = tokio::task::spawn(async move {
+            // update repository
+            repo.update_route_paths(
+                chain_id,
                 &params.new_tokens,
                 &params.deprecated_tokens,
                 &params.new_dexs,
                 &params.deprecated_dexs
-            ).await
-            .unwrap();
-        self.extension.write().await.update_route_paths(route_paths);
+            ).await.unwrap();
+
+            let updated_dexs = repo.get_all_dexs(chain_id).await.unwrap();
+            let updated_tokens = repo.get_all_tokens(chain_id).await.unwrap();
+            let route_paths = get_candidates(updated_dexs, updated_tokens);
+            extension.write().await.update_route_paths(route_paths);
+            info!(
+                target: "searcher_rpc",
+                new_tokens = ?params.new_tokens,
+                deprecated_tokens = ?params.deprecated_tokens,
+                new_dexs = ?params.new_dexs,
+                deprecated_dexs = ?params.deprecated_dexs
+            );
+        }).await;
+
         Ok(())
     }
 }

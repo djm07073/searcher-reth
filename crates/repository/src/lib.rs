@@ -1,4 +1,5 @@
 mod entity;
+pub mod types;
 
 use eyre::Result;
 use reth_revm::primitives::Address;
@@ -14,9 +15,9 @@ use sea_orm::{
 };
 use entity::prelude::*;
 use entity::{ token, dex, contract };
-use searcher_reth_types::{ DexType, Priority };
 
 use migration::{ Migrator, MigratorTrait };
+use types::{DexType, Priority};
 
 pub struct SearcherRepository {
     conn: DatabaseConnection,
@@ -68,7 +69,7 @@ impl SearcherRepository {
     pub async fn update_route_paths(
         &self,
         chain_id: u64,
-        new_tokens: &Option<Vec<(Address, u64)>>,
+        new_tokens: &Option<Vec<(Address, i64)>>,
         deprecated_tokens: &Option<Vec<Address>>,
         new_dexs: &Option<Vec<(DexType, Address)>>,
         deprecated_dexs: &Option<Vec<Address>>
@@ -80,7 +81,7 @@ impl SearcherRepository {
                 let token = token::ActiveModel {
                     chain_id: Set(chain_id as i64),
                     address: Set(address.to_string()),
-                    priority: Set(*priority as i64),
+                    priority: Set(*priority),
                 };
                 token.insert(&txn).await?;
             }

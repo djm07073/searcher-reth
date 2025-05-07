@@ -4,6 +4,7 @@ use eyre::eyre;
 use clap::Parser;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
+use reth_tracing::tracing::info;
 use searcher_reth_extension::{ exex::SearcherExEx, SearcherExtension, SetupArgs };
 use searcher_reth_repository::SearcherRepository;
 use searcher_reth_rpc::{ SearcherRpc, SearcherRpcApiServer };
@@ -18,7 +19,7 @@ fn main() -> eyre::Result<()> {
 
         let db_path = builder.config().datadir().db().join("searcher.db");
         let chain_id = builder.config().chain.chain.id();
-        let database = Arc::new(SearcherRepository::new(db_path.to_str().unwrap()).await?);
+        let repository = Arc::new(SearcherRepository::new(db_path.to_str().unwrap()).await?);
         let extension = Arc::new(RwLock::new(SearcherExtension::new(args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
@@ -31,7 +32,9 @@ fn main() -> eyre::Result<()> {
                         let rt = tokio::runtime::Runtime
                             ::new()
                             .expect("failed to spawn blocking runtime");
-                        rt.block_on(SearcherRpc::new(chain_id, extension_for_rpc, database.clone()))
+                        rt.block_on(
+                            SearcherRpc::new(chain_id, extension_for_rpc, repository.clone())
+                        )
                     })
                     .join()
                     .map_err(|_| eyre!("failed to join ShadowRpc thread"))
@@ -40,13 +43,13 @@ fn main() -> eyre::Result<()> {
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
                     .map_err(|e| eyre!("failed to extend w/ SearcherRpc: {e}"))?;
-                println!("RPC module extended successfully");
+                info!(target : "reth-exex", info = "RPC module extended successfully");
                 Ok(())
             })
             .install_exex("SearcherExEx", {
                 move |ctx| {
                     let exex = SearcherExEx::exex(ctx, extension_for_exex, sock.clone());
-                    println!("SearcherExEx installed successfully");
+                    info!(target : "reth-exex", info = "SearcherExEx installed successfully");
                     exex
                 }
             })
