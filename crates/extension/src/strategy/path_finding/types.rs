@@ -1,7 +1,7 @@
 use alloy_primitives::{ address, Address };
 use alloy_sol_types::sol;
 
-pub(crate) const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
+pub(super) const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 
 sol! {
     struct Hop {
@@ -11,11 +11,8 @@ sol! {
         address dstToken;
     }
 
-    struct RoutePath {
-        Hop[] hops;
-    }
+    function getProfit(uint256 initialAmt, Hop[] memory route) external returns (uint256 profit); 
 
-    struct Profit {
-        uint256 amount;
-    }
 }
+
+pub(crate) type RoutePath = Vec<Hop>;

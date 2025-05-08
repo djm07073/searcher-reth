@@ -6,7 +6,7 @@ use searcher_reth_extension::{
     strategy::path_finding::candidate::get_candidates,
     SearcherExtension,
 };
-use searcher_reth_repository::{types::DexType, SearcherRepository};
+use searcher_reth_repository::{ types::DexType, SearcherRepository };
 use serde::{ Deserialize, Serialize };
 use tokio::sync::RwLock;
 
@@ -19,8 +19,8 @@ pub struct UpdateCodeParameters {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProfitRateParameters {
-    pub min_profit: Option<u64>,
-    pub max_profit: Option<u64>,
+    pub min_profit: Option<String>,
+    pub max_profit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,7 +85,7 @@ impl SearcherRpcApiServer for SearcherRpc {
             let _bytecode = bytecode.clone();
             repo.update_contract(chain_id, bytecode).await.unwrap();
             info!(
-                target: "searcher_rpc",
+                target = "searcher_rpc",
                 bytecode = ?_bytecode
             );
         }).await;
@@ -96,7 +96,7 @@ impl SearcherRpcApiServer for SearcherRpc {
     async fn update_profit_rate(&self, params: UpdateProfitRateParameters) -> RpcResult<()> {
         // only update extension
         info!(
-                target: "searcher_rpc",
+                target = "searcher_rpc",
                 min_profit = ?params.min_profit,
                 max_profit = ?params.max_profit
             );
@@ -123,7 +123,7 @@ impl SearcherRpcApiServer for SearcherRpc {
             let route_paths = get_candidates(updated_dexs, updated_tokens);
             extension.write().await.update_route_paths(route_paths);
             info!(
-                target: "searcher_rpc",
+                target = "searcher_rpc",
                 new_tokens = ?params.new_tokens,
                 deprecated_tokens = ?params.deprecated_tokens,
                 new_dexs = ?params.new_dexs,

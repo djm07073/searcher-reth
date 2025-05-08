@@ -49,7 +49,7 @@ fn main() -> eyre::Result<()> {
             .install_exex("SearcherExEx", {
                 move |ctx| {
                     let exex = SearcherExEx::exex(ctx, extension_for_exex, sock.clone());
-                    info!(target : "reth-exex", info = "SearcherExEx installed successfully");
+                    info!(target = "reth-exex", info = "SearcherExEx installed successfully");
                     exex
                 }
             })

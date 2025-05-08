@@ -53,6 +53,7 @@ impl SearcherExEx {
                         // create a task to simulate contract execution in searcher executor parallel
                         let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
                         let optimal_paths = finder.filter_candidates(
+                            extension.vault,
                             route_paths.clone(),
                             extension.max_profit_ratio,
                             extension.min_profit_ratio
