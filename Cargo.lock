@@ -10126,6 +10126,7 @@ dependencies = [
  "itertools 0.11.0",
  "jsonrpsee",
  "once_cell",
+ "rayon",
  "reth",
  "reth-chainspec",
  "reth-evm",

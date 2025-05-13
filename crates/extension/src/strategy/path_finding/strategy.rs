@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-
+use std::{ collections::HashMap, sync::{ Arc, Mutex } };
+use rayon::prelude::*;
 use alloy_primitives::{ Address, U256 };
 use alloy_sol_types::{ SolCall, SolValue, sol };
 use eyre::{ Error, Ok };
@@ -54,16 +54,16 @@ impl<'a, DB> Strategy
     fn filter_candidates(
         &mut self,
         vault: Address,
-        candidates: Vec<HashMap<Address, Vec<RoutePath>>>,
+        candidates: Vec<HashMap<Address, Vec<RoutePath>>>, // vec![hop2_paths, hop3_paths]
         max_profit_ratio: U256,
         min_profit_ratio: U256
     ) -> Result<Vec<RoutePath>, Error> {
-        let mut optimal_paths = Vec::<RoutePath>::new();
+        let mut filtered_candidates = Vec::<RoutePath>::new();
         while let Some(candidate) = candidates.iter().next() {
             if
                 self.transact_route_paths(
                     vault,
-                    &mut optimal_paths,
+                    &mut filtered_candidates,
                     candidate.clone(),
                     max_profit_ratio,
                     min_profit_ratio
@@ -73,58 +73,69 @@ impl<'a, DB> Strategy
             }
         }
 
-        Ok(optimal_paths)
+        Ok(filtered_candidates)
     }
 
     fn transact_route_paths(
         &mut self,
         vault: Address,
-        optimal_paths: &mut Vec<RoutePath>,
-        route_paths: HashMap<Address, Vec<RoutePath>>,
+        filtered_candidates: &mut Vec<RoutePath>,
+        initial_token_route_map: HashMap<Address, Vec<RoutePath>>,
         max_profit_ratio: U256,
         min_profit_ratio: U256
     ) -> bool {
-        for (starting_token, paths) in route_paths.iter() {
-            let balance = self.get_vault_balance(vault, *starting_token);
-            if balance.is_zero() {
-                info!(
-                    target = "reth-extension",
-                    info = "balance zero",
-                    starting_token = starting_token.to_string()
-                );
-                continue;
+        let balances: HashMap<Address, U256> = {
+            let mut balances = HashMap::new();
+            for token in initial_token_route_map.keys() {
+                balances.insert(*token, self.get_vault_balance(vault, *token));
             }
-            for route_path in paths.iter() {
+            balances
+        };
+
+        let filtered_paths = Arc::new(Mutex::new(Vec::new()));
+        let found_max_profit = Arc::new(Mutex::new(false));
+        let evm_state = Arc::new(Mutex::new(&mut self.evm));
+
+        initial_token_route_map.par_iter().for_each(|(initial_token, paths)| {
+            let balance = balances[initial_token];
+            if balance.is_zero() {
+                return;
+            }
+
+            paths.par_iter().for_each(|path| {
+                if *found_max_profit.lock().unwrap() {
+                    return;
+                }
+
                 let encoded_data = (getProfitCall {
                     initialAmt: balance,
-                    route: route_path.clone().into(),
+                    route: path.clone().into(),
                 }).abi_encode();
-                let result = self.evm
-                    .transact_system_call(encoded_data.into(), DEPLOYED_ADDRESS)
-                    .unwrap();
-                // amount
+
+                let result = {
+                    let mut evm = evm_state.lock().unwrap();
+                    evm.transact_system_call(encoded_data.into(), DEPLOYED_ADDRESS).unwrap()
+                };
+
                 let net_profit = match result.result {
                     ExecutionResult::Success { output: Output::Call(value), .. } =>
                         <U256>::abi_decode(&value).unwrap(),
-                    _ => {
-                        continue;
-                    }
+                    _ => U256::ZERO,
                 };
-                let net_profit = net_profit.checked_div(balance).unwrap();
 
-                if net_profit.ge(&max_profit_ratio) {
-                    optimal_paths.push(route_path.clone());
-                    return true;
-                } else if net_profit.ge(&min_profit_ratio) {
-                    optimal_paths.push(route_path.clone());
+                let net_profit_ratio = net_profit.checked_div(balance).unwrap();
+                let mut paths = filtered_paths.lock().unwrap();
+
+                if net_profit_ratio.ge(&max_profit_ratio) {
+                    paths.push(path.clone());
+                    *found_max_profit.lock().unwrap() = true;
+                } else if net_profit_ratio.ge(&min_profit_ratio) {
+                    paths.push(path.clone());
                 }
-            }
-        }
+            });
+        });
 
-        // it's enought to execute swap route paths
-        if optimal_paths.len() > 10 {
-            return true;
-        }
-        false
+        filtered_candidates.extend(Arc::try_unwrap(filtered_paths).unwrap().into_inner().unwrap());
+        *found_max_profit.lock().unwrap()
     }
 }
