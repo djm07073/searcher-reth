@@ -6,7 +6,6 @@ use eyre::{ Error, Ok };
 
 use reth_provider::{ BlockHashReader, DBProvider, StateCommitmentProvider };
 use reth_revm::SystemCallEvm;
-use reth_tracing::tracing::info;
 use revm::context::result::{ ExecutionResult, Output };
 
 use crate::strategy::path_finding::types::getProfitCall;
@@ -59,7 +58,7 @@ impl<'a, DB> Strategy
         min_profit_ratio: U256
     ) -> Result<Vec<RoutePath>, Error> {
         let mut filtered_candidates = Vec::<RoutePath>::new();
-        while let Some(candidate) = candidates.iter().next() {
+        while let Some(candidate) = candidates.first() {
             if
                 self.transact_route_paths(
                     vault,
@@ -109,7 +108,7 @@ impl<'a, DB> Strategy
 
                 let encoded_data = (getProfitCall {
                     initialAmt: balance,
-                    route: path.clone().into(),
+                    route: path.clone(),
                 }).abi_encode();
 
                 let result = {

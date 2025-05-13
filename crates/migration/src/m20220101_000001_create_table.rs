@@ -16,7 +16,7 @@ enum Dex {
     Table,
     ChainId,
     Address,
-    DexType,
+    Type,
 }
 
 #[derive(DeriveIden)]
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
                 .if_not_exists()
                 .col(ColumnDef::new(Dex::ChainId).integer().not_null())
                 .col(ColumnDef::new(Dex::Address).string().not_null())
-                .col(ColumnDef::new(Dex::DexType).string().not_null())
+                .col(ColumnDef::new(Dex::Type).string().not_null())
                 .primary_key(Index::create().col(Dex::ChainId).col(Dex::Address))
                 .to_owned()
         ).await?;
