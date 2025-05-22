@@ -62,7 +62,7 @@ impl SearcherRpc {
         let dexs = repo.get_all_dexs(chain_id).await.unwrap();
         let tokens = repo.get_all_tokens(chain_id).await.unwrap();
         let route_paths = get_candidates(dexs, tokens);
-        extension.write().await.update_route_paths(route_paths);
+        extension.write().await.update_candidates(route_paths);
         Self { chain_id, extension, repo }
     }
 }
@@ -121,7 +121,7 @@ impl SearcherRpcApiServer for SearcherRpc {
             let updated_dexs = repo.get_all_dexs(chain_id).await.unwrap();
             let updated_tokens = repo.get_all_tokens(chain_id).await.unwrap();
             let route_paths = get_candidates(updated_dexs, updated_tokens);
-            extension.write().await.update_route_paths(route_paths);
+            extension.write().await.update_candidates(route_paths);
             info!(
                 target = "searcher_rpc",
                 new_tokens = ?params.new_tokens,

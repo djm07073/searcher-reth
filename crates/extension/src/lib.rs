@@ -15,24 +15,18 @@ pub struct SearcherExtension {
     pub(crate) contract: Bytecode,
     pub(crate) max_profit_ratio: U256,
     pub(crate) min_profit_ratio: U256,
-    pub(crate) route_paths: Vec<HashMap<Address, Vec<RoutePath>>>,
+    pub(crate) candidates: Vec<HashMap<Address, Vec<RoutePath>>>,
 }
 
 const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
 
 #[derive(Debug, Clone, Args)]
 pub struct SetupArgs {
-    #[clap(long = "vault-address")]
-    pub vault_address: String,
-
     #[clap(long = "database-url")]
     pub database_url: String,
 
     #[clap(long = "bytecode", default_value = "")]
     pub bytecode: String,
-
-    #[clap(long = "socket-path", default_value = "/tmp/ipc_socket")]
-    pub socket_path: String,
 
     #[clap(long = "max-profit", default_value = "0.001")] // 0.001%
     pub max_profit: String,
@@ -42,10 +36,10 @@ pub struct SetupArgs {
 }
 
 impl SearcherExtension {
-    pub fn new(args: SetupArgs) -> Result<Self, Error> {
+    pub fn new(vault_address: String, args: SetupArgs) -> Result<Self, Error> {
         let bytecode = args.bytecode.clone();
         let bytecode = Bytecode::new_raw_checked(Bytes(bytecode.into())).unwrap();
-        let vault = Address::from_hex(args.vault_address).unwrap();
+        let vault = Address::from_hex(vault_address).unwrap();
         Ok(Self {
             vault,
             contract: bytecode,
@@ -57,7 +51,7 @@ impl SearcherExtension {
                 (((args.min_profit.parse::<f64>().unwrap() * 1_000_000.0) as u128) * ONE_ETHER) /
                     1_000_000
             ),
-            route_paths: Vec::new(),
+            candidates: Vec::new(),
         })
     }
 
@@ -88,7 +82,7 @@ impl SearcherExtension {
         }
     }
 
-    pub fn update_route_paths(&mut self, route_paths: Vec<HashMap<Address, Vec<RoutePath>>>) {
-        self.route_paths = route_paths;
+    pub fn update_candidates(&mut self, candidates: Vec<HashMap<Address, Vec<RoutePath>>>) {
+        self.candidates = candidates;
     }
 }

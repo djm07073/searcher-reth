@@ -14,13 +14,14 @@ fn main() -> eyre::Result<()> {
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
         let sock = Arc::new(UnixDatagram::unbound()?);
-        let socket_path = args.socket_path.clone();
+        let socket_path = std::env::var("SOCKET_PATH").unwrap_or("tmp/searcher.sock".to_string());
+        let vault_address = std::env::var("VAULT_ADDRESS").expect("VAULT_ADDRESS must be set");
         sock.connect(socket_path)?;
 
         let db_path = builder.config().datadir().db().join("searcher.db");
         let chain_id = builder.config().chain.chain.id();
         let repository = Arc::new(SearcherRepository::new(db_path.to_str().unwrap()).await?);
-        let extension = Arc::new(RwLock::new(SearcherExtension::new(args).unwrap()));
+        let extension = Arc::new(RwLock::new(SearcherExtension::new(vault_address, args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
 

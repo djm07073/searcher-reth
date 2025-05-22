@@ -34,7 +34,7 @@ impl SearcherExEx {
         Ok(async move {
             let extension = extension.read().await;
             let bytecode = extension.contract.clone();
-            let route_paths = extension.route_paths.clone();
+            let candidates = extension.candidates.clone();
 
             while let Some(notification) = ctx.notifications.next().await {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
@@ -51,20 +51,20 @@ impl SearcherExEx {
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
                     // create a task to simulate contract execution in searcher executor parallel
                     let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
-                    let optimal_paths = finder.filter_candidates(
+                    let filtered_candidates = finder.filter_candidates(
                         extension.vault,
-                        route_paths.clone(),
+                        candidates.clone(),
                         extension.max_profit_ratio,
                         extension.min_profit_ratio
                     )?;
 
-                    let encoded_paths = optimal_paths.abi_encode();
-
+                    let encoded_data = filtered_candidates.abi_encode();
+                    // send the encoded data to the socket
                     let sock = sock.clone();
                     tokio::spawn(async move {
-                        sock.send(&encoded_paths).await.unwrap();
+                        sock.send(&encoded_data).await.unwrap();
                     });
-                    // transfer optimal_paths to the socket
+
                     ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                 }
             }

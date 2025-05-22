@@ -119,7 +119,9 @@ impl<'a, DB> Strategy
                 let net_profit = match result.result {
                     ExecutionResult::Success { output: Output::Call(value), .. } =>
                         <U256>::abi_decode(&value).unwrap(),
-                    _ => U256::ZERO,
+                    _ => {
+                        return;
+                    }
                 };
 
                 let net_profit_ratio = net_profit.checked_div(balance).unwrap();
