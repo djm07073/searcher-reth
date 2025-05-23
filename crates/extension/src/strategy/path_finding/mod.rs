@@ -12,7 +12,7 @@ use reth_revm::{
     interpreter::interpreter::EthInterpreter,
     state::{AccountInfo, Bytecode},
 };
-use types::DEPLOYED_ADDRESS;
+use types::STRATEGY_CONTRACT_ADDRESS;
 
 type PathFinderCtx<'a, DB> = Context<
     BlockEnv,
@@ -41,7 +41,7 @@ where
     pub fn new(provider: LatestStateProviderRef<'a, DB>, contract: Bytecode) -> Self {
         let mut db = CacheDB::new(StateProviderDatabase::new(provider));
         db.insert_account_info(
-            DEPLOYED_ADDRESS,
+            STRATEGY_CONTRACT_ADDRESS,
             AccountInfo {
                 code_hash: contract.hash_slow(),
                 code: Some(contract),

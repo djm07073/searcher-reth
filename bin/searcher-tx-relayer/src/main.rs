@@ -10,8 +10,14 @@ use relayer::RelayerPool;
 use reth_tracing::tracing;
 use socket::SocketHandler;
 use status::Status;
-use std::sync::{ Arc, atomic::{ AtomicU8, Ordering } };
-use tokio::{ signal::unix::{ SignalKind, signal }, spawn };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
+use tokio::{
+    signal::unix::{SignalKind, signal},
+    spawn,
+};
 
 use clap::Parser;
 
@@ -82,35 +88,33 @@ async fn handle_messages(
     to: Address,
     pool: Arc<RelayerPool>,
     socket: &SocketHandler,
-    status: Arc<AtomicU8>
+    status: Arc<AtomicU8>,
 ) -> Result<()> {
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     loop {
         match socket.receive_data().await {
-            Ok(data) => {
-                match status.load(Ordering::SeqCst).into() {
-                    Status::Paused => {
-                        tracing::info!("Service paused, skipping transaction {:?}", data);
-                        continue;
-                    }
-                    Status::Stopped => {
-                        tracing::info!("Service stopped, exiting message handler");
-                        break;
-                    }
-                    Status::Running => {
-                        let pool = pool.clone();
-                        let to = to.clone();
-                        let handle = spawn(async move {
-                            match pool.send_transaction(to, data).await {
-                                Ok(hash) => tracing::info!("Transaction sent: {:?}", hash),
-                                Err(e) => tracing::error!("Transaction failed: {}", e),
-                            }
-                        });
-                        handles.push(handle);
-                    }
+            Ok(data) => match status.load(Ordering::SeqCst).into() {
+                Status::Paused => {
+                    tracing::info!("Service paused, skipping transaction {:?}", data);
+                    continue;
                 }
-            }
+                Status::Stopped => {
+                    tracing::info!("Service stopped, exiting message handler");
+                    break;
+                }
+                Status::Running => {
+                    let pool = pool.clone();
+
+                    let handle = spawn(async move {
+                        match pool.send_transaction(to, data).await {
+                            Ok(hash) => tracing::info!("Transaction sent: {:?}", hash),
+                            Err(e) => tracing::error!("Transaction failed: {}", e),
+                        }
+                    });
+                    handles.push(handle);
+                }
+            },
             Err(e) => tracing::error!("Failed to receive data: {}", e),
         }
         handles.retain(|handle| !handle.is_finished());

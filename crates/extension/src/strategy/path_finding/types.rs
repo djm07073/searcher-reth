@@ -1,7 +1,8 @@
-use alloy_primitives::{ Address, address };
+use alloy_primitives::{Address, address};
 use alloy_sol_types::sol;
 
-pub(super) const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
+pub(super) const STRATEGY_CONTRACT_ADDRESS: Address =
+    address!("0000000000000000000000000000000000012345");
 
 sol! {
     #[derive(Debug)]
