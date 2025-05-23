@@ -1,17 +1,21 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, AtomicUsize, Ordering},
-};
+use std::sync::{ Arc, atomic::{ AtomicU64, AtomicUsize, Ordering } };
 
-use alloy::{
-    network::{EthereumWallet, TransactionBuilder},
-    rpc::types::TransactionRequest,
-};
-use alloy_primitives::{Address, ChainId, FixedBytes};
+use alloy::{ network::{ EthereumWallet, TransactionBuilder }, rpc::types::TransactionRequest };
+use alloy_primitives::{ Address, ChainId, FixedBytes };
 use alloy_provider::{
-    Identity, IpcConnect, Provider, ProviderBuilder, RootProvider,
+    Identity,
+    IpcConnect,
+    Provider,
+    ProviderBuilder,
+    RootProvider,
     fillers::{
-        BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
+        BlobGasFiller,
+        ChainIdFiller,
+        FillProvider,
+        GasFiller,
+        JoinFill,
+        NonceFiller,
+        WalletFiller,
     },
 };
 use eyre::Result;
@@ -24,11 +28,11 @@ pub(crate) type IpcWalletProvider = FillProvider<
     JoinFill<
         JoinFill<
             Identity,
-            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>
         >,
-        WalletFiller<EthereumWallet>,
+        WalletFiller<EthereumWallet>
     >,
-    RootProvider,
+    RootProvider
 >;
 
 pub(crate) struct Relayer {
@@ -45,27 +49,33 @@ pub(crate) struct RelayerPool {
 impl RelayerPool {
     pub async fn new(
         icp_connect: IpcConnect<String>,
-        wallets: Vec<EthereumWallet>,
+        wallets: Vec<EthereumWallet>
     ) -> Result<Self> {
         let provider = ProviderBuilder::new().connect_ipc(icp_connect.clone()).await?;
         let chain_id = provider.get_chain_id().await?;
 
-        let relayers = try_join_all(wallets.into_iter().map(|wallet| {
-            let icp = icp_connect.clone();
-            async move {
-                let provider =
-                    ProviderBuilder::new().wallet(wallet.clone()).connect_ipc(icp).await?;
-                let signer_address = wallet.default_signer().address();
-                let account_info = provider.get_account_info(signer_address).await?;
-                let nonce = account_info.nonce;
+        let relayers = try_join_all(
+            wallets.into_iter().map(|wallet| {
+                let icp = icp_connect.clone();
+                async move {
+                    let provider = ProviderBuilder::new()
+                        .wallet(wallet.clone())
+                        .connect_ipc(icp).await?;
+                    let signer_address = wallet.default_signer().address();
+                    let account_info = provider.get_account_info(signer_address).await?;
+                    let nonce = account_info.nonce;
 
-                Ok::<Arc<Mutex<Relayer>>, eyre::Error>(Arc::new(Mutex::new(Relayer {
-                    provider,
-                    nonce: AtomicU64::new(nonce),
-                })))
-            }
-        }))
-        .await?;
+                    Ok::<Arc<Mutex<Relayer>>, eyre::Error>(
+                        Arc::new(
+                            Mutex::new(Relayer {
+                                provider,
+                                nonce: AtomicU64::new(nonce),
+                            })
+                        )
+                    )
+                }
+            })
+        ).await?;
 
         Ok(Self { chain_id, relayers, current: AtomicUsize::new(0) })
     }
@@ -80,47 +90,58 @@ impl RelayerPool {
         // TODO consider using
         // 1. Set access list to reduce gas fees
         // 2. EIP-1559 config : max_fee_per_gas, max_priority_fee_per_gas
+        let max_fee_per_gas = 20_000_000_000;
+        let max_priority_fee_per_gas = 1_000_000_000;
+        let gas_limit = 21_000;
         let tx = TransactionRequest::default()
             .with_to(to)
             .with_chain_id(self.chain_id)
             .with_input(data)
             .with_nonce(nonce)
-            .with_gas_limit(21_000)
-            .with_max_priority_fee_per_gas(1_000_000_000)
-            .with_max_fee_per_gas(20_000_000_000);
+            .with_gas_limit(gas_limit)
+            .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
+            .with_max_fee_per_gas(max_fee_per_gas);
 
         let pending_tx = relayer.provider.send_transaction(tx).await?;
 
         match pending_tx.get_receipt().await {
             Ok(receipt) => {
                 let tx_hash = receipt.transaction_hash;
-                match relayer.nonce.compare_exchange(
-                    nonce,
-                    nonce + 1,
-                    Ordering::SeqCst,
-                    Ordering::Acquire,
-                ) {
+                let gas_used = receipt.gas_used;
+                match
+                    relayer.nonce.compare_exchange(
+                        nonce,
+                        nonce + 1,
+                        Ordering::SeqCst,
+                        Ordering::Acquire
+                    )
+                {
                     Ok(_) => {
                         tracing::info!(
-                            "Transaction sent with hash: {:?}, nonce: {}, relayer: {}",
+                            "Transaction hash: {:?}, relayer: {}, nonce: {}, gas_used :{},gas_limit:{}, max_fee_per_gas :{}, max_priority_fee_per_gas :{}, ",
                             tx_hash,
+                            current,
                             nonce,
-                            current
+                            gas_used,
+                            gas_limit,
+                            max_fee_per_gas,
+                            max_priority_fee_per_gas
                         );
                         return Ok(tx_hash);
                     }
                     Err(actual_nonce) => {
-                        // Someone else updated the nonce, retry with new nonce
                         tracing::info!(
                             "Failed to update nonce: {}, relayer: {}",
                             actual_nonce,
                             current
                         );
-                        return Err(eyre::eyre!(
-                            "Failed to update nonce: {}, relayer: {}",
-                            actual_nonce,
-                            current
-                        ));
+                        return Err(
+                            eyre::eyre!(
+                                "Failed to update nonce: {}, relayer: {}",
+                                actual_nonce,
+                                current
+                            )
+                        );
                     }
                 }
             }

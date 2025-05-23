@@ -36,7 +36,6 @@ fn main() -> eyre::Result<()> {
                 .join()
                 .map_err(|_| eyre!("failed to join ShadowRpc thread"))
                 .unwrap();
-                // TODO: change to auth merge
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
                     .map_err(|e| eyre!("failed to extend w/ SearcherRpc: {e}"))?;
