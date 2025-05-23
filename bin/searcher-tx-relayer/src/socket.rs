@@ -11,13 +11,10 @@ impl SocketHandler {
     pub fn new(socket_path: String) -> Result<Self> {
         let sock = UnixDatagram::unbound()?;
         sock.connect(&socket_path)?;
-        
+
         info!("Socket connected at {}", socket_path);
-        
-        Ok(Self {
-            sock,
-            path: socket_path,
-        })
+
+        Ok(Self { sock, path: socket_path })
     }
 
     pub async fn receive_data(&self) -> Result<Vec<u8>> {

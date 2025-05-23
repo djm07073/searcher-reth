@@ -1,16 +1,19 @@
-use std::{ collections::HashMap, sync::{ Arc, Mutex } };
+use alloy_primitives::{Address, U256};
+use alloy_sol_types::{SolCall, SolValue, sol};
+use eyre::{Error, Ok};
 use rayon::prelude::*;
-use alloy_primitives::{ Address, U256 };
-use alloy_sol_types::{ SolCall, SolValue, sol };
-use eyre::{ Error, Ok };
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use reth_provider::{ BlockHashReader, DBProvider, StateCommitmentProvider };
+use reth_provider::{BlockHashReader, DBProvider, StateCommitmentProvider};
 use reth_revm::SystemCallEvm;
-use revm::context::result::{ ExecutionResult, Output };
+use revm::context::result::{ExecutionResult, Output};
 
 use crate::strategy::path_finding::types::getProfitCall;
 
-use super::{ types::RoutePath, PathFinder, DEPLOYED_ADDRESS };
+use super::{DEPLOYED_ADDRESS, PathFinder, types::RoutePath};
 
 pub trait Strategy {
     fn filter_candidates(
@@ -18,7 +21,7 @@ pub trait Strategy {
         vault: Address,
         candidates: Vec<HashMap<Address, Vec<RoutePath>>>,
         max_profit_ratio: U256,
-        min_profit_ratio: U256
+        min_profit_ratio: U256,
     ) -> Result<Vec<RoutePath>, Error>;
 
     fn get_vault_balance(&mut self, vault: Address, token: Address) -> U256;
@@ -29,13 +32,13 @@ pub trait Strategy {
         optimal_paths: &mut Vec<RoutePath>,
         route_paths: HashMap<Address, Vec<RoutePath>>,
         max_profit_ratio: U256,
-        min_profit_ratio: U256
+        min_profit_ratio: U256,
     ) -> bool;
 }
 
-impl<'a, DB> Strategy
-    for PathFinder<'a, DB>
-    where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+impl<'a, DB> Strategy for PathFinder<'a, DB>
+where
+    DB: DBProvider + BlockHashReader + StateCommitmentProvider,
 {
     fn get_vault_balance(&mut self, vault: Address, token: Address) -> U256 {
         sol! {
@@ -44,8 +47,9 @@ impl<'a, DB> Strategy
         let encoded = (balanceOfCall { account: vault }).abi_encode();
         let result = self.evm.transact_system_call(encoded.into(), token).unwrap();
         match result.result {
-            ExecutionResult::Success { output: Output::Call(value), .. } =>
-                <U256>::abi_decode(&value).unwrap(),
+            ExecutionResult::Success { output: Output::Call(value), .. } => {
+                <U256>::abi_decode(&value).unwrap()
+            }
             _ => U256::ZERO,
         }
     }
@@ -55,19 +59,17 @@ impl<'a, DB> Strategy
         vault: Address,
         candidates: Vec<HashMap<Address, Vec<RoutePath>>>, // vec![hop2_paths, hop3_paths]
         max_profit_ratio: U256,
-        min_profit_ratio: U256
+        min_profit_ratio: U256,
     ) -> Result<Vec<RoutePath>, Error> {
         let mut filtered_candidates = Vec::<RoutePath>::new();
         while let Some(candidate) = candidates.first() {
-            if
-                self.transact_route_paths(
-                    vault,
-                    &mut filtered_candidates,
-                    candidate.clone(),
-                    max_profit_ratio,
-                    min_profit_ratio
-                )
-            {
+            if self.transact_route_paths(
+                vault,
+                &mut filtered_candidates,
+                candidate.clone(),
+                max_profit_ratio,
+                min_profit_ratio,
+            ) {
                 break;
             }
         }
@@ -81,7 +83,7 @@ impl<'a, DB> Strategy
         filtered_candidates: &mut Vec<RoutePath>,
         initial_token_route_map: HashMap<Address, Vec<RoutePath>>,
         max_profit_ratio: U256,
-        min_profit_ratio: U256
+        min_profit_ratio: U256,
     ) -> bool {
         let balances: HashMap<Address, U256> = {
             let mut balances = HashMap::new();
@@ -106,10 +108,8 @@ impl<'a, DB> Strategy
                     return;
                 }
 
-                let encoded_data = (getProfitCall {
-                    initialAmt: balance,
-                    route: path.clone(),
-                }).abi_encode();
+                let encoded_data =
+                    (getProfitCall { initialAmt: balance, route: path.clone() }).abi_encode();
 
                 let result = {
                     let mut evm = evm_state.lock().unwrap();
@@ -117,8 +117,9 @@ impl<'a, DB> Strategy
                 };
 
                 let net_profit = match result.result {
-                    ExecutionResult::Success { output: Output::Call(value), .. } =>
-                        <U256>::abi_decode(&value).unwrap(),
+                    ExecutionResult::Success { output: Output::Call(value), .. } => {
+                        <U256>::abi_decode(&value).unwrap()
+                    }
                     _ => {
                         return;
                     }

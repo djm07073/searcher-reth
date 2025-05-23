@@ -1,8 +1,8 @@
 use alloy::{network::EthereumWallet, signers::local::PrivateKeySigner};
 use alloy_provider::IpcConnect;
-use serde::Deserialize;
-use std::fs;
 use eyre::Result;
+use serde::Deserialize;
+use std::{fs, path::Path};
 
 #[derive(Deserialize)]
 pub struct SearcherConfig {
@@ -23,12 +23,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Self> {
-        // First try to load from config file
-        let config_path = std::env::var("CONFIG_PATH")
-            .unwrap_or_else(|_| "./env.toml".to_string());
-        
-        let config_str = fs::read_to_string(&config_path)?;
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let config_str = fs::read_to_string(&path)?;
         let config: Config = toml::from_str(&config_str)?;
 
         // Allow environment variables to override config file
@@ -41,16 +37,15 @@ impl Config {
                     .unwrap_or(config.searcher.private_keys),
             },
             network: NetworkConfig {
-                ipc_path: std::env::var("IPC_PATH")
-                    .unwrap_or(config.network.ipc_path),
-                socket_path: std::env::var("SOCKET_PATH")
-                    .unwrap_or(config.network.socket_path),
+                ipc_path: std::env::var("IPC_PATH").unwrap_or(config.network.ipc_path),
+                socket_path: std::env::var("SOCKET_PATH").unwrap_or(config.network.socket_path),
             },
         })
     }
 
     pub fn get_wallets(&self) -> Result<Vec<EthereumWallet>> {
-        self.searcher.private_keys
+        self.searcher
+            .private_keys
             .iter()
             .map(|key| {
                 let pk_signer: PrivateKeySigner = key.parse()?;

@@ -26,3 +26,4 @@ alloy-provider = { version = "1.0.5", features = ["ipc"] }
 alloy = "1.0.6"
 serde.workspace = true
 toml = "0.8.22"
+clap = "4.5.38"

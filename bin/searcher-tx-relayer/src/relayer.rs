@@ -1,22 +1,18 @@
-use std::sync::{ atomic::{ AtomicU64, AtomicUsize, Ordering }, Arc };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, AtomicUsize, Ordering},
+};
 
-use alloy::{ network::{ EthereumWallet, TransactionBuilder }, rpc::types::TransactionRequest };
-use alloy_primitives::{ Address, ChainId, FixedBytes };
+use alloy::{
+    network::{EthereumWallet, TransactionBuilder},
+    rpc::types::TransactionRequest,
+};
+use alloy_primitives::{Address, ChainId, FixedBytes};
 use alloy_provider::{
+    Identity, IpcConnect, Provider, ProviderBuilder, RootProvider,
     fillers::{
-        BlobGasFiller,
-        ChainIdFiller,
-        FillProvider,
-        GasFiller,
-        JoinFill,
-        NonceFiller,
-        WalletFiller,
+        BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
     },
-    Identity,
-    IpcConnect,
-    Provider,
-    ProviderBuilder,
-    RootProvider,
 };
 use eyre::Result;
 use futures_util::future::try_join_all;
@@ -28,11 +24,11 @@ pub(crate) type IpcWalletProvider = FillProvider<
     JoinFill<
         JoinFill<
             Identity,
-            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>
+            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
         >,
-        WalletFiller<EthereumWallet>
+        WalletFiller<EthereumWallet>,
     >,
-    RootProvider
+    RootProvider,
 >;
 
 pub(crate) struct Relayer {
@@ -49,39 +45,29 @@ pub(crate) struct RelayerPool {
 impl RelayerPool {
     pub async fn new(
         icp_connect: IpcConnect<String>,
-        wallets: Vec<EthereumWallet>
+        wallets: Vec<EthereumWallet>,
     ) -> Result<Self> {
         let provider = ProviderBuilder::new().connect_ipc(icp_connect.clone()).await?;
         let chain_id = provider.get_chain_id().await?;
 
-        let relayers = try_join_all(
-            wallets.into_iter().map(|wallet| {
-                let icp = icp_connect.clone();
-                async move {
-                    let provider = ProviderBuilder::new()
-                        .wallet(wallet.clone())
-                        .connect_ipc(icp).await?;
-                    let signer_address = wallet.default_signer().address();
-                    let account_info = provider.get_account_info(signer_address).await?;
-                    let nonce = account_info.nonce;
+        let relayers = try_join_all(wallets.into_iter().map(|wallet| {
+            let icp = icp_connect.clone();
+            async move {
+                let provider =
+                    ProviderBuilder::new().wallet(wallet.clone()).connect_ipc(icp).await?;
+                let signer_address = wallet.default_signer().address();
+                let account_info = provider.get_account_info(signer_address).await?;
+                let nonce = account_info.nonce;
 
-                    Ok::<Arc<Mutex<Relayer>>, eyre::Error>(
-                        Arc::new(
-                            Mutex::new(Relayer {
-                                provider,
-                                nonce: AtomicU64::new(nonce),
-                            })
-                        )
-                    )
-                }
-            })
-        ).await?;
+                Ok::<Arc<Mutex<Relayer>>, eyre::Error>(Arc::new(Mutex::new(Relayer {
+                    provider,
+                    nonce: AtomicU64::new(nonce),
+                })))
+            }
+        }))
+        .await?;
 
-        Ok(Self {
-            chain_id,
-            relayers,
-            current: AtomicUsize::new(0),
-        })
+        Ok(Self { chain_id, relayers, current: AtomicUsize::new(0) })
     }
 
     pub async fn send_transaction(&self, to: Address, data: Vec<u8>) -> Result<FixedBytes<32>> {
@@ -91,6 +77,9 @@ impl RelayerPool {
 
         let nonce = relayer.nonce.load(Ordering::Acquire);
 
+        // TODO consider using
+        // 1. Set access list to reduce gas fees
+        // 2. EIP-1559 config : max_fee_per_gas, max_priority_fee_per_gas
         let tx = TransactionRequest::default()
             .with_to(to)
             .with_chain_id(self.chain_id)
@@ -105,14 +94,12 @@ impl RelayerPool {
         match pending_tx.get_receipt().await {
             Ok(receipt) => {
                 let tx_hash = receipt.transaction_hash;
-                match
-                    relayer.nonce.compare_exchange(
-                        nonce,
-                        nonce + 1,
-                        Ordering::SeqCst,
-                        Ordering::Acquire
-                    )
-                {
+                match relayer.nonce.compare_exchange(
+                    nonce,
+                    nonce + 1,
+                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                ) {
                     Ok(_) => {
                         tracing::info!(
                             "Transaction sent with hash: {:?}, nonce: {}, relayer: {}",
@@ -129,19 +116,17 @@ impl RelayerPool {
                             actual_nonce,
                             current
                         );
-                        return Err(
-                            eyre::eyre!(
-                                "Failed to update nonce: {}, relayer: {}",
-                                actual_nonce,
-                                current
-                            )
-                        );
+                        return Err(eyre::eyre!(
+                            "Failed to update nonce: {}, relayer: {}",
+                            actual_nonce,
+                            current
+                        ));
                     }
                 }
             }
             Err(e) => {
                 tracing::error!(
-                    "Transaction failed for nonce {}, relayer {}: {}",
+                    "Old Transaction failed for nonce {}, relayer {}: {}",
                     nonce,
                     current,
                     e

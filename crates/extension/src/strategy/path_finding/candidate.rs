@@ -2,20 +2,19 @@ use std::collections::HashMap;
 
 use alloy_primitives::Address;
 
-use itertools::{ Either, Itertools };
+use itertools::{Either, Itertools};
 use searcher_reth_repository::types::Priority;
 
-use super::types::{ Hop, RoutePath };
+use super::types::{Hop, RoutePath};
 
 // A -> B -> A
 // A -> B -> C -> A
 pub fn get_candidates(
     dexs: Vec<(Address, u8)>,
-    tokens: Vec<(Address, Priority)>
+    tokens: Vec<(Address, Priority)>,
 ) -> Vec<HashMap<Address, Vec<RoutePath>>> {
-    let (beginning_tokens, other_tokens): (Vec<Address>, Vec<Address>) = tokens
-        .iter()
-        .partition_map(|(addr, p)| {
+    let (beginning_tokens, other_tokens): (Vec<Address>, Vec<Address>) =
+        tokens.iter().partition_map(|(addr, p)| {
             if *p == Priority::Beginning { Either::Left(*addr) } else { Either::Right(*addr) }
         });
 
@@ -40,7 +39,7 @@ pub fn get_candidates(
                         dex: dex_hops[1].0,
                         srcToken: *inter_token,
                         dstToken: *start_token,
-                    }
+                    },
                 ];
                 hop2_paths.push(path);
             }
@@ -69,7 +68,7 @@ pub fn get_candidates(
                         dex: dex_hops[2].0,
                         srcToken: *inter_token_pair[1],
                         dstToken: *start_token,
-                    }
+                    },
                 ];
                 hop3_paths.push(path);
             }

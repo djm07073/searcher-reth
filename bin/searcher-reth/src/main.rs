@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use eyre::eyre;
 use clap::Parser;
+use eyre::eyre;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::info;
-use searcher_reth_extension::{ exex::SearcherExEx, SearcherExtension, SetupArgs };
+use searcher_reth_extension::{SearcherExtension, SetupArgs, exex::SearcherExEx};
 use searcher_reth_repository::SearcherRepository;
-use searcher_reth_rpc::{ SearcherRpc, SearcherRpcApiServer };
-use tokio::{ net::UnixDatagram, sync::RwLock };
+use searcher_reth_rpc::{SearcherRpc, SearcherRpcApiServer};
+use tokio::{net::UnixDatagram, sync::RwLock};
 
 fn main() -> eyre::Result<()> {
     // database
@@ -28,18 +28,14 @@ fn main() -> eyre::Result<()> {
         let handle = builder
             .node(EthereumNode::default())
             .extend_rpc_modules(move |ctx| {
-                let searcher_rpc: SearcherRpc = std::thread
-                    ::spawn(move || {
-                        let rt = tokio::runtime::Runtime
-                            ::new()
-                            .expect("failed to spawn blocking runtime");
-                        rt.block_on(
-                            SearcherRpc::new(chain_id, extension_for_rpc, repository.clone())
-                        )
-                    })
-                    .join()
-                    .map_err(|_| eyre!("failed to join ShadowRpc thread"))
-                    .unwrap();
+                let searcher_rpc: SearcherRpc = std::thread::spawn(move || {
+                    let rt =
+                        tokio::runtime::Runtime::new().expect("failed to spawn blocking runtime");
+                    rt.block_on(SearcherRpc::new(chain_id, extension_for_rpc, repository.clone()))
+                })
+                .join()
+                .map_err(|_| eyre!("failed to join ShadowRpc thread"))
+                .unwrap();
                 // TODO: change to auth merge
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
@@ -54,7 +50,8 @@ fn main() -> eyre::Result<()> {
                     exex
                 }
             })
-            .launch().await?;
+            .launch()
+            .await?;
 
         handle.wait_for_node_exit().await
     })

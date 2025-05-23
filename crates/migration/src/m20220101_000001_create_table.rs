@@ -30,39 +30,45 @@ enum Contract {
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Create Token table
-        manager.create_table(
-            Table::create()
-                .table(Token::Table)
-                .if_not_exists()
-                .col(ColumnDef::new(Token::ChainId).integer().not_null())
-                .col(ColumnDef::new(Token::Address).string().not_null())
-                .col(ColumnDef::new(Token::Priority).integer().not_null())
-                .primary_key(Index::create().col(Token::ChainId).col(Token::Address))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Token::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Token::ChainId).integer().not_null())
+                    .col(ColumnDef::new(Token::Address).string().not_null())
+                    .col(ColumnDef::new(Token::Priority).integer().not_null())
+                    .primary_key(Index::create().col(Token::ChainId).col(Token::Address))
+                    .to_owned(),
+            )
+            .await?;
 
         // Create Dex table
-        manager.create_table(
-            Table::create()
-                .table(Dex::Table)
-                .if_not_exists()
-                .col(ColumnDef::new(Dex::ChainId).integer().not_null())
-                .col(ColumnDef::new(Dex::Address).string().not_null())
-                .col(ColumnDef::new(Dex::Type).string().not_null())
-                .primary_key(Index::create().col(Dex::ChainId).col(Dex::Address))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Dex::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Dex::ChainId).integer().not_null())
+                    .col(ColumnDef::new(Dex::Address).string().not_null())
+                    .col(ColumnDef::new(Dex::Type).string().not_null())
+                    .primary_key(Index::create().col(Dex::ChainId).col(Dex::Address))
+                    .to_owned(),
+            )
+            .await?;
 
         // Create Contract table
-        manager.create_table(
-            Table::create()
-                .table(Contract::Table)
-                .if_not_exists()
-                .col(ColumnDef::new(Contract::ChainId).integer().not_null())
-                .col(ColumnDef::new(Contract::Code).string().not_null())
-                .primary_key(Index::create().col(Contract::ChainId))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Contract::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Contract::ChainId).integer().not_null())
+                    .col(ColumnDef::new(Contract::Code).string().not_null())
+                    .primary_key(Index::create().col(Contract::ChainId))
+                    .to_owned(),
+            )
+            .await?;
 
         Ok(())
     }
