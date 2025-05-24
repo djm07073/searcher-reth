@@ -42,15 +42,17 @@ impl SearcherExEx {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
                     let num_hash = block.num_hash();
+                    // extension is not setup yet, skip
                     if bytecode.clone().is_empty() {
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                         continue;
                     }
-                    // Create a read-only database provider that we can use to get lastest state
+                    // Create a read-only database provider that we can use to get latest state
                     let database_provider: <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider = ctx
                         .provider()
                         .database_provider_ro()?;
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
+
                     // create a task to simulate contract execution in searcher executor parallel
                     let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
                     let filtered_candidates = finder.filter_candidates(
@@ -68,7 +70,9 @@ impl SearcherExEx {
                             .map(|route| format!("{:?}", route))
                             .collect::<Vec<String>>()
                             .join(", ");
-                        let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
+                        let calldata = (executeCall {
+                            routes: filtered_candidates,
+                        }).abi_encode();
                         sock.send(&calldata).await.unwrap();
                         reth_tracing::tracing::info!(
                             target: "reth-exex",
