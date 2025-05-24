@@ -10532,6 +10532,7 @@ dependencies = [
  "reth-transaction-pool",
  "rusqlite",
  "searcher-reth-extension",
+ "searcher-reth-logger",
  "searcher-reth-repository",
  "searcher-reth-rpc",
  "secp256k1",
@@ -10584,6 +10585,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "searcher-reth-logger"
+version = "0.0.0"
+dependencies = [
+ "reth-tracing",
+]
+
+[[package]]
 name = "searcher-reth-repository"
 version = "0.0.0"
 dependencies = [
@@ -10624,6 +10632,7 @@ dependencies = [
  "reth-primitives",
  "reth-provider",
  "reth-tracing",
+ "searcher-reth-logger",
  "serde",
  "tokio",
  "toml",

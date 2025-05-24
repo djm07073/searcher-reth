@@ -1,10 +1,7 @@
-mod init;
-
 use std::sync::Arc;
 
 use clap::Parser;
 use eyre::eyre;
-use init::init;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::info;
@@ -13,8 +10,10 @@ use searcher_reth_repository::SearcherRepository;
 use searcher_reth_rpc::{ SearcherRpc, SearcherRpcApiServer };
 use tokio::{ net::UnixDatagram, sync::RwLock };
 
+const SERVICE_NAME: &str = "searhcer-reth";
+
 fn main() -> eyre::Result<()> {
-    let _logger = init();
+    let _logger = searcher_reth_logger::init(SERVICE_NAME);
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
         let sock = Arc::new(UnixDatagram::unbound()?);

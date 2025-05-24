@@ -2,12 +2,10 @@ mod config;
 mod relayer;
 mod socket;
 mod status;
-mod init;
 
 use alloy_primitives::Address;
 use config::Config;
 use eyre::Result;
-use init::init;
 use relayer::RelayerPool;
 use reth_tracing::tracing;
 use socket::SocketHandler;
@@ -24,6 +22,8 @@ struct Cli {
     config: String,
 }
 
+const SERVICE_NAME: &str = "searhcer-tx-relayer";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
     let wallets = config.get_wallets()?;
     let ipc = config.get_ipc();
 
-    let _logger = init();
+    let _logger = searcher_reth_logger::init(SERVICE_NAME);
 
     let pool = Arc::new(RelayerPool::new(ipc.clone(), wallets).await?);
     let socket = SocketHandler::new(config.network.socket_path)?;
