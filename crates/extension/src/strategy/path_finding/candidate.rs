@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes};
 
 use itertools::{Either, Itertools};
-use searcher_reth_repository::types::Priority;
+use searcher_reth_repository::types::{DexType, Priority};
 
 use super::types::{Hop, RoutePath};
 
 // A -> B -> A
 // A -> B -> C -> A
 pub fn get_candidates(
-    dexs: Vec<(Address, u8)>,
+    dexs: Vec<(Address, DexType, String)>,
     tokens: Vec<(Address, Priority)>,
 ) -> Vec<HashMap<Address, Vec<RoutePath>>> {
     let (beginning_tokens, other_tokens): (Vec<Address>, Vec<Address>) =
@@ -33,12 +33,14 @@ pub fn get_candidates(
                         dex: dex_hops[0].0,
                         srcToken: *start_token,
                         dstToken: *inter_token,
+                        metadata: dex_hops[0].2.clone().parse::<Bytes>().unwrap(),
                     },
                     Hop {
                         dexType: dex_hops[1].1,
                         dex: dex_hops[1].0,
                         srcToken: *inter_token,
                         dstToken: *start_token,
+                        metadata: dex_hops[1].2.clone().parse::<Bytes>().unwrap(),
                     },
                 ];
                 hop2_paths.push(path);
@@ -56,18 +58,21 @@ pub fn get_candidates(
                         dex: dex_hops[0].0,
                         srcToken: *start_token,
                         dstToken: *inter_token_pair[0],
+                        metadata: dex_hops[0].2.clone().parse::<Bytes>().unwrap(),
                     },
                     Hop {
                         dexType: dex_hops[1].1,
                         dex: dex_hops[1].0,
                         srcToken: *inter_token_pair[0],
                         dstToken: *inter_token_pair[1],
+                        metadata: dex_hops[1].2.clone().parse::<Bytes>().unwrap(),
                     },
                     Hop {
                         dexType: dex_hops[2].1,
                         dex: dex_hops[2].0,
                         srcToken: *inter_token_pair[1],
                         dstToken: *start_token,
+                        metadata: dex_hops[2].2.clone().parse::<Bytes>().unwrap(),
                     },
                 ];
                 hop3_paths.push(path);

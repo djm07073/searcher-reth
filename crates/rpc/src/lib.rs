@@ -31,7 +31,7 @@ pub struct UpdateProfitRateParameters {
 pub struct UpdateRoutePathParameters {
     pub new_tokens: Option<Vec<(Address, i64)>>,
     pub deprecated_tokens: Option<Vec<Address>>,
-    pub new_dexs: Option<Vec<(DexType, Address)>>,
+    pub new_dexs: Option<Vec<(DexType, Address, String)>>,
     pub deprecated_dexs: Option<Vec<Address>>,
 }
 

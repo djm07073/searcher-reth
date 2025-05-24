@@ -43,7 +43,7 @@ impl SearcherRepository {
         Ok(result)
     }
 
-    pub async fn get_all_dexs(&self, chain_id: u64) -> Result<Vec<(Address, DexType)>> {
+    pub async fn get_all_dexs(&self, chain_id: u64) -> Result<Vec<(Address, DexType, String)>> {
         let dexs =
             Dex::find().filter(dex::Column::ChainId.eq(chain_id as i64)).all(&self.conn).await?;
 
@@ -51,8 +51,9 @@ impl SearcherRepository {
             .into_iter()
             .map(|dex| {
                 let addr: Address = dex.address.parse().unwrap();
-                let dex_type = dex.dex_type.parse::<i64>().unwrap();
-                (addr, dex_type as DexType)
+                let dex_type = dex.dex_type;
+                let metadata = dex.metadata;
+                (addr, dex_type as DexType, metadata)
             })
             .collect();
 
@@ -64,7 +65,7 @@ impl SearcherRepository {
         chain_id: u64,
         new_tokens: &Option<Vec<(Address, i64)>>,
         deprecated_tokens: &Option<Vec<Address>>,
-        new_dexs: &Option<Vec<(DexType, Address)>>,
+        new_dexs: &Option<Vec<(DexType, Address, String)>>,
         deprecated_dexs: &Option<Vec<Address>>,
     ) -> Result<()> {
         let txn = self.conn.begin().await?;
@@ -94,11 +95,12 @@ impl SearcherRepository {
         }
 
         if let Some(dexs) = new_dexs {
-            for (dex_type, address) in dexs {
+            for (dex_type, address, metadata) in dexs {
                 let dex = dex::ActiveModel {
                     chain_id: Set(chain_id as i64),
                     address: Set(address.to_string()),
-                    dex_type: Set((*dex_type as i64).to_string()),
+                    dex_type: Set(*dex_type as i64),
+                    metadata: Set(metadata.to_string()),
                 };
                 dex.insert(&txn).await?;
             }

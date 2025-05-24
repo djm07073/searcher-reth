@@ -8,7 +8,9 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub address: String,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub dex_type: String,
+    pub dex_type: i64,
+    #[sea_orm(auto_increment = false)]
+    pub metadata: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
