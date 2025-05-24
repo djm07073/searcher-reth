@@ -1,16 +1,20 @@
+mod init;
+
 use std::sync::Arc;
 
 use clap::Parser;
 use eyre::eyre;
+use init::init;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::info;
-use searcher_reth_extension::{SearcherExtension, SetupArgs, exex::SearcherExEx};
+use searcher_reth_extension::{ SearcherExtension, SetupArgs, exex::SearcherExEx };
 use searcher_reth_repository::SearcherRepository;
-use searcher_reth_rpc::{SearcherRpc, SearcherRpcApiServer};
-use tokio::{net::UnixDatagram, sync::RwLock};
+use searcher_reth_rpc::{ SearcherRpc, SearcherRpcApiServer };
+use tokio::{ net::UnixDatagram, sync::RwLock };
 
 fn main() -> eyre::Result<()> {
+    let _logger = init();
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
         let sock = Arc::new(UnixDatagram::unbound()?);
@@ -28,29 +32,42 @@ fn main() -> eyre::Result<()> {
         let handle = builder
             .node(EthereumNode::default())
             .extend_rpc_modules(move |ctx| {
-                let searcher_rpc: SearcherRpc = std::thread::spawn(move || {
-                    let rt =
-                        tokio::runtime::Runtime::new().expect("failed to spawn blocking runtime");
-                    rt.block_on(SearcherRpc::new(chain_id, extension_for_rpc, repository.clone()))
-                })
-                .join()
-                .map_err(|_| eyre!("failed to join ShadowRpc thread"))
-                .unwrap();
+                let searcher_rpc: SearcherRpc = std::thread
+                    ::spawn(move || {
+                        let rt = tokio::runtime::Runtime
+                            ::new()
+                            .expect("failed to spawn blocking runtime");
+                        rt.block_on(
+                            SearcherRpc::new(chain_id, extension_for_rpc, repository.clone())
+                        )
+                    })
+                    .join()
+                    .map_err(|_| eyre!("failed to join ShadowRpc thread"))
+                    .unwrap();
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
                     .map_err(|e| eyre!("failed to extend w/ SearcherRpc: {e}"))?;
-                info!(target : "reth-exex", info = "RPC module extended successfully");
+                info!(
+                    target: "reth-exex",
+                    event = "rpc_extension",
+                    status = "success",
+                    "RPC module extended successfully"
+                );
                 Ok(())
             })
             .install_exex("SearcherExEx", {
                 move |ctx| {
                     let exex = SearcherExEx::exex(ctx, extension_for_exex, sock.clone());
-                    info!(target = "reth-exex", info = "SearcherExEx installed successfully");
+                    info!(
+                        target: "reth-exex",
+                        event = "exex_installation",
+                        status = "success",
+                        "SearcherExEx installed successfully"
+                    );
                     exex
                 }
             })
-            .launch()
-            .await?;
+            .launch().await?;
 
         handle.wait_for_node_exit().await
     })

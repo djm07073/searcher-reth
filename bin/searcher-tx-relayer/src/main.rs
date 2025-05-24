@@ -2,22 +2,18 @@ mod config;
 mod relayer;
 mod socket;
 mod status;
+mod init;
 
 use alloy_primitives::Address;
 use config::Config;
 use eyre::Result;
+use init::init;
 use relayer::RelayerPool;
 use reth_tracing::tracing;
 use socket::SocketHandler;
 use status::Status;
-use std::sync::{
-    Arc,
-    atomic::{AtomicU8, Ordering},
-};
-use tokio::{
-    signal::unix::{SignalKind, signal},
-    spawn,
-};
+use std::sync::{ Arc, atomic::{ AtomicU8, Ordering } };
+use tokio::{ signal::unix::{ SignalKind, signal }, spawn };
 
 use clap::Parser;
 
@@ -31,10 +27,16 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    tracing::info!("Starting tx-relayer service...");
+    tracing::info!(
+        event = "service_start",
+        status = "initializing",
+        "Starting tx-relayer service..."
+    );
     let config = Config::new(&cli.config)?;
     let wallets = config.get_wallets()?;
     let ipc = config.get_ipc();
+
+    let _logger = init();
 
     let pool = Arc::new(RelayerPool::new(ipc.clone(), wallets).await?);
     let socket = SocketHandler::new(config.network.socket_path)?;
@@ -52,28 +54,52 @@ async fn main() -> Result<()> {
             }
         }
         _ = switch.recv() => {
-            tracing::info!("Received SIGUSR1 - Pausing/Resuming");
+            tracing::info!(
+                event = "signal_received",
+                signal = "SIGUSR1",
+                "Received SIGUSR1 - Pausing/Resuming"
+            );
             let current_status: Status = atomic_status.load(Ordering::SeqCst).into();
             match current_status {
                 Status::Running => {
                     atomic_status.store(Status::Paused as u8, Ordering::SeqCst);
-                    tracing::info!("Service paused");
+                    tracing::info!(
+                        event = "status_change",
+                        status = "paused",
+                        previous_status = "running",
+                        "Service paused"
+                    );
                 }
                 Status::Paused => {
                     atomic_status.store(Status::Running as u8, Ordering::SeqCst);
-                    tracing::info!("Service resumed");
+                    tracing::info!(
+                        event = "status_change",
+                        status = "running",
+                        previous_status = "paused",
+                        "Service resumed"
+                    );
                 }
                 _ => unreachable!(),
             }
         }
         _ = sigterm.recv() => {
-            tracing::info!("Received SIGTERM");
+            tracing::info!(
+                event = "signal_received",
+                signal = "SIGTERM",
+                status = "stopping",
+                "Received SIGTERM"
+            );
             atomic_status.store(Status::Stopped as u8, Ordering::SeqCst);
             socket.cleanup();
             return Ok(());
         }
         _ = sigint.recv() => {
-            tracing::info!("Received SIGINT");
+            tracing::info!(
+                event = "signal_received",
+                signal = "SIGINT",
+                status = "stopping",
+                "Received SIGINT"
+            );
             atomic_status.store(Status::Stopped as u8, Ordering::SeqCst);
             socket.cleanup();
             return Ok(());
@@ -88,33 +114,51 @@ async fn handle_messages(
     to: Address,
     pool: Arc<RelayerPool>,
     socket: &SocketHandler,
-    status: Arc<AtomicU8>,
+    status: Arc<AtomicU8>
 ) -> Result<()> {
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     loop {
         match socket.receive_data().await {
-            Ok(data) => match status.load(Ordering::SeqCst).into() {
-                Status::Paused => {
-                    tracing::info!("Service paused, skipping transaction {:?}", data);
-                    continue;
-                }
-                Status::Stopped => {
-                    tracing::info!("Service stopped, exiting message handler");
-                    break;
-                }
-                Status::Running => {
-                    let pool = pool.clone();
+            Ok(data) =>
+                match status.load(Ordering::SeqCst).into() {
+                    Status::Paused => {
+                        tracing::info!(
+                            event = "transaction_skip",
+                            status = "paused",
+                            data = ?data,
+                            "Service paused, skipping transaction"
+                        );
+                        continue;
+                    }
+                    Status::Stopped => {
+                        tracing::info!("Service stopped, exiting message handler");
+                        break;
+                    }
+                    Status::Running => {
+                        let pool = pool.clone();
 
-                    let handle = spawn(async move {
-                        match pool.send_transaction(to, data).await {
-                            Ok(hash) => tracing::info!("Transaction sent: {:?}", hash),
-                            Err(e) => tracing::error!("Transaction failed: {}", e),
-                        }
-                    });
-                    handles.push(handle);
+                        let handle = spawn(async move {
+                            match pool.send_transaction(to, data).await {
+                                Ok(hash) =>
+                                    tracing::info!(
+                                    event = "transaction_sent",
+                                    status = "success",
+                                    tx_hash = ?hash,
+                                    "Transaction sent successfully"
+                                ),
+                                Err(e) =>
+                                    tracing::error!(
+                                    event = "transaction_failed",
+                                    status = "error",
+                                    error = %e,
+                                    "Transaction failed"
+                                ),
+                            }
+                        });
+                        handles.push(handle);
+                    }
                 }
-            },
             Err(e) => tracing::error!("Failed to receive data: {}", e),
         }
         handles.retain(|handle| !handle.is_finished());

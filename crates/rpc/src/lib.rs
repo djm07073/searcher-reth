@@ -1,16 +1,13 @@
 use std::sync::Arc;
 
-use jsonrpsee::{
-    core::{RpcResult, async_trait},
-    proc_macros::rpc,
-    tracing::info,
-};
+use jsonrpsee::{ core::{ RpcResult, async_trait }, proc_macros::rpc, tracing::info };
 use reth_revm::primitives::Address;
 use searcher_reth_extension::{
-    SearcherExtension, strategy::path_finding::candidate::get_candidates,
+    SearcherExtension,
+    strategy::path_finding::candidate::get_candidates,
 };
-use searcher_reth_repository::{SearcherRepository, types::DexType};
-use serde::{Deserialize, Serialize};
+use searcher_reth_repository::{ SearcherRepository, types::DexType };
+use serde::{ Deserialize, Serialize };
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -60,7 +57,7 @@ impl SearcherRpc {
     pub async fn new(
         chain_id: u64,
         extension: Arc<RwLock<SearcherExtension>>,
-        repo: Arc<SearcherRepository>,
+        repo: Arc<SearcherRepository>
     ) -> Self {
         let dexs = repo.get_all_dexs(chain_id).await.unwrap();
         let tokens = repo.get_all_tokens(chain_id).await.unwrap();
@@ -79,7 +76,6 @@ impl SearcherRpc {
 #[async_trait]
 impl SearcherRpcApiServer for SearcherRpc {
     async fn update_code(&self, params: UpdateCodeParameters) -> RpcResult<()> {
-        // update repository
         let repo = self.repo.clone();
         let chain_id = self.chain_id;
         let bytecode = params.bytecode.clone();
@@ -88,21 +84,22 @@ impl SearcherRpcApiServer for SearcherRpc {
             let _bytecode = bytecode.clone();
             repo.update_contract(chain_id, bytecode).await.unwrap();
             info!(
-                target = "searcher_rpc",
-                bytecode = ?_bytecode
+                event = "contract_code_updated",
+                chain_id = chain_id,
+                bytecode = _bytecode,
+                "Contract bytecode has been updated"
             );
-        })
-        .await;
+        }).await;
 
         Ok(())
     }
 
     async fn update_profit_rate(&self, params: UpdateProfitRateParameters) -> RpcResult<()> {
-        // only update extension
         info!(
-            target = "searcher_rpc",
+            event = "profit_rate_updated",
             min_profit = ?params.min_profit,
-            max_profit = ?params.max_profit
+            max_profit = ?params.max_profit,
+            "Profit rate parameters have been updated"
         );
         self.extension.write().await.update_profit_rate(params.min_profit, params.max_profit);
         Ok(())
@@ -119,10 +116,8 @@ impl SearcherRpcApiServer for SearcherRpc {
                 &params.new_tokens,
                 &params.deprecated_tokens,
                 &params.new_dexs,
-                &params.deprecated_dexs,
-            )
-            .await
-            .unwrap();
+                &params.deprecated_dexs
+            ).await.unwrap();
 
             let updated_dexs = repo.get_all_dexs(chain_id).await.unwrap();
             let updated_tokens = repo.get_all_tokens(chain_id).await.unwrap();
@@ -135,8 +130,7 @@ impl SearcherRpcApiServer for SearcherRpc {
                 new_dexs = ?params.new_dexs,
                 deprecated_dexs = ?params.deprecated_dexs
             );
-        })
-        .await;
+        }).await;
 
         Ok(())
     }

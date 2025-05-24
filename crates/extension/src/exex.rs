@@ -60,13 +60,22 @@ impl SearcherExEx {
                         extension.min_profit_ratio
                     )?;
 
-                    let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
-
                     // send the encoded data to the socket
                     let sock = sock.clone();
                     tokio::spawn(async move {
-                        reth_tracing::tracing::info!(target: "reth-exex", "Sending data to socket");
+                        let routes = filtered_candidates
+                            .iter()
+                            .map(|route| format!("{:?}", route))
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
                         sock.send(&calldata).await.unwrap();
+                        reth_tracing::tracing::info!(
+                            target: "reth-exex",
+                            action = "send_calldata_to_relayer", 
+                            routes = routes,
+                            "Sending encoded calldata to socket"
+                        );
                     });
 
                     ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;

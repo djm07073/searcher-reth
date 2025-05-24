@@ -10537,6 +10537,8 @@ dependencies = [
  "secp256k1",
  "serde_json",
  "tokio",
+ "tracing-appender",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -10625,6 +10627,8 @@ dependencies = [
  "serde",
  "tokio",
  "toml",
+ "tracing-appender",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
