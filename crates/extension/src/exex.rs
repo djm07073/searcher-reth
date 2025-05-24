@@ -1,19 +1,22 @@
-use std::{future::Future, sync::Arc};
+use std::{ future::Future, sync::Arc };
 
 use eyre::Result;
 use futures_util::StreamExt;
 
 use crate::{
     SearcherExtension,
-    strategy::path_finding::{PathFinder, strategy::Strategy, types::executeCall},
+    strategy::path_finding::{ PathFinder, strategy::Strategy, types::executeCall },
 };
 use alloy_sol_types::SolCall;
-use reth_exex::{ExExContext, ExExEvent, ExExNotification};
-use reth_node_api::{FullNodeComponents, FullNodeTypes};
+use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
+use reth_node_api::{ FullNodeComponents, FullNodeTypes };
 use reth_provider::{
-    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
+    BlockHashReader,
+    DatabaseProviderFactory,
+    LatestStateProviderRef,
+    StateCommitmentProvider,
 };
-use tokio::{net::UnixDatagram, sync::RwLock};
+use tokio::{ net::UnixDatagram, sync::RwLock };
 
 pub struct SearcherExEx;
 
@@ -22,12 +25,13 @@ impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
         extension: Arc<RwLock<SearcherExtension>>,
-        sock: Arc<UnixDatagram>,
-    ) -> Result<impl Future<Output = Result<()>>>
-    where
-        Node: FullNodeComponents,
-        <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
-            BlockHashReader + StateCommitmentProvider,
+        sock: Arc<UnixDatagram>
+    )
+        -> Result<impl Future<Output = Result<()>>>
+        where
+            Node: FullNodeComponents,
+            <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider: BlockHashReader +
+                StateCommitmentProvider
     {
         Ok(async move {
             let extension = extension.read().await;
@@ -53,7 +57,7 @@ impl SearcherExEx {
                         extension.vault,
                         candidates.clone(),
                         extension.max_profit_ratio,
-                        extension.min_profit_ratio,
+                        extension.min_profit_ratio
                     )?;
 
                     let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
@@ -61,6 +65,7 @@ impl SearcherExEx {
                     // send the encoded data to the socket
                     let sock = sock.clone();
                     tokio::spawn(async move {
+                        reth_tracing::tracing::info!(target: "reth-exex", "Sending data to socket");
                         sock.send(&calldata).await.unwrap();
                     });
 
