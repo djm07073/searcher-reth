@@ -5,9 +5,9 @@ services:
     image: grafana/loki:latest
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/config.yaml
+    command: -config.file=/etc/loki/loki.yml
     volumes:
-      - ./etc/loki/config.yaml:/etc/loki/config.yaml:ro
+      - ./etc/loki.yml:/etc/loki/loki.yml:ro
       - ./data/loki:/var/loki
     restart: unless-stopped
     logging:
@@ -19,10 +19,10 @@ services:
   promtail:
     image: grafana/promtail:latest
     volumes:
-      - ./etc/promtail/config.yaml:/etc/promtail/config.yaml:ro
+      - ./etc/promtail.yml:/etc/promtail/promtail.yml:ro
       - /var/log:/var/log:ro
       - ./data/promtail:/var/lib/promtail
-    command: -config.file=/etc/promtail/config.yaml
+    command: -config.file=/etc/promtail/promtail.yml
     depends_on:
       - loki
     restart: unless-stopped

@@ -1,16 +1,22 @@
-mod entity;
+pub mod entity;
 pub mod types;
 
-use entity::{contract, dex, prelude::*, token};
+use entity::{ contract, dex, hop, prelude::*, token };
 use eyre::Result;
 use reth_revm::primitives::Address;
+use std::collections::HashMap;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Database, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, TransactionTrait,
+    ActiveValue::Set,
+    ColumnTrait,
+    Database,
+    DatabaseConnection,
+    EntityTrait,
+    QueryFilter,
+    QueryOrder,
 };
 
-use migration::{Migrator, MigratorTrait};
-use types::{DexType, Priority};
+use migration::{ Migrator, MigratorTrait };
+use types::{ DexType, Priority };
 
 pub struct SearcherRepository {
     conn: DatabaseConnection,
@@ -25,12 +31,60 @@ impl SearcherRepository {
         Ok(Self { conn })
     }
 
+    pub async fn get_route_paths(
+        &self,
+        chain_id: u64
+    ) -> Result<HashMap<Address, Vec<Vec<hop::Model>>>> {
+        let start_hops = HopEntity::find()
+            .filter(hop::Column::ChainId.eq(chain_id as i64))
+            .filter(hop::Column::HopType.eq(hop::HopType::Start))
+            .all(&self.conn).await?;
+
+        let inter_hops = HopEntity::find()
+            .filter(hop::Column::ChainId.eq(chain_id as i64))
+            .filter(hop::Column::HopType.eq(hop::HopType::Inter))
+            .all(&self.conn).await?;
+
+        let end_hops = HopEntity::find()
+            .filter(hop::Column::ChainId.eq(chain_id as i64))
+            .filter(hop::Column::HopType.eq(hop::HopType::End))
+            .all(&self.conn).await?;
+
+        let mut path_map: HashMap<Address, Vec<Vec<hop::Model>>> = HashMap::new();
+
+        for start in &start_hops {
+            let start_token: Address = start.src_token.parse().unwrap();
+            let mut paths = Vec::new();
+
+            for end in &end_hops {
+                if start.dst_token == end.src_token {
+                    paths.push(vec![start.clone(), end.clone()]);
+                }
+            }
+
+            for inter in &inter_hops {
+                if start.dst_token == inter.src_token {
+                    for end in &end_hops {
+                        if inter.dst_token == end.src_token {
+                            paths.push(vec![start.clone(), inter.clone(), end.clone()]);
+                        }
+                    }
+                }
+            }
+
+            if !paths.is_empty() {
+                path_map.insert(start_token, paths);
+            }
+        }
+
+        Ok(path_map)
+    }
+
     pub async fn get_all_tokens(&self, chain_id: u64) -> Result<Vec<(Address, Priority)>> {
         let tokens = Token::find()
             .filter(token::Column::ChainId.eq(chain_id as i64))
             .order_by_asc(token::Column::Priority)
-            .all(&self.conn)
-            .await?;
+            .all(&self.conn).await?;
 
         let result = tokens
             .into_iter()
@@ -43,100 +97,31 @@ impl SearcherRepository {
         Ok(result)
     }
 
-    pub async fn get_all_dexs(&self, chain_id: u64) -> Result<Vec<(Address, DexType, String)>> {
-        let dexs =
-            Dex::find().filter(dex::Column::ChainId.eq(chain_id as i64)).all(&self.conn).await?;
+    pub async fn get_all_dexs(&self, chain_id: u64) -> Result<Vec<(Address, DexType)>> {
+        let dexs = Dex::find()
+            .filter(dex::Column::ChainId.eq(chain_id as i64))
+            .all(&self.conn).await?;
 
         let result = dexs
             .into_iter()
             .map(|dex| {
                 let addr: Address = dex.address.parse().unwrap();
                 let dex_type = dex.dex_type;
-                let metadata = dex.metadata;
-                (addr, dex_type as DexType, metadata)
+                (addr, dex_type as DexType)
             })
             .collect();
 
         Ok(result)
     }
 
-    pub async fn update_route_paths(
-        &self,
-        chain_id: u64,
-        new_tokens: &Option<Vec<(Address, i64)>>,
-        deprecated_tokens: &Option<Vec<Address>>,
-        new_dexs: &Option<Vec<(DexType, Address, String)>>,
-        deprecated_dexs: &Option<Vec<Address>>,
-    ) -> Result<()> {
-        let txn = self.conn.begin().await?;
-
-        if let Some(tokens) = new_tokens {
-            for (address, priority) in tokens {
-                let token = token::ActiveModel {
-                    chain_id: Set(chain_id as i64),
-                    address: Set(address.to_string()),
-                    priority: Set(*priority),
-                };
-                token.insert(&txn).await?;
-            }
-        }
-
-        if let Some(tokens) = deprecated_tokens {
-            for address in tokens {
-                Token::delete_many()
-                    .filter(
-                        token::Column::ChainId
-                            .eq(chain_id as i64)
-                            .and(token::Column::Address.eq(address.to_string())),
-                    )
-                    .exec(&txn)
-                    .await?;
-            }
-        }
-
-        if let Some(dexs) = new_dexs {
-            for (dex_type, address, metadata) in dexs {
-                let dex = dex::ActiveModel {
-                    chain_id: Set(chain_id as i64),
-                    address: Set(address.to_string()),
-                    dex_type: Set(*dex_type as i64),
-                    metadata: Set(metadata.to_string()),
-                };
-                dex.insert(&txn).await?;
-            }
-        }
-
-        if let Some(dexs) = deprecated_dexs {
-            for address in dexs {
-                Dex::delete_many()
-                    .filter(
-                        dex::Column::ChainId
-                            .eq(chain_id as i64)
-                            .and(dex::Column::Address.eq(address.to_string())),
-                    )
-                    .exec(&txn)
-                    .await?;
-            }
-        }
-
-        txn.commit().await?;
-        Ok(())
-    }
-
-    pub async fn insert_contract(&self, chain_id: u64, contract_code: String) -> Result<()> {
-        let contract =
-            contract::ActiveModel { chain_id: Set(chain_id as i64), code: Set(contract_code) };
-        contract.insert(&self.conn).await?;
-        Ok(())
-    }
-
     pub async fn update_contract(&self, chain_id: u64, contract_code: String) -> Result<()> {
-        let contract =
-            contract::ActiveModel { chain_id: Set(chain_id as i64), code: Set(contract_code) };
+        let contract = contract::ActiveModel {
+            chain_id: Set(chain_id as i64),
+            code: Set(contract_code),
+        };
         Contract::update(contract)
             .filter(contract::Column::ChainId.eq(chain_id as i64))
-            .exec(&self.conn)
-            .await?;
+            .exec(&self.conn).await?;
         Ok(())
     }
 }

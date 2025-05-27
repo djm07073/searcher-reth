@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use std::{ collections::HashMap, sync::Arc };
 
 use jsonrpsee::{ core::{ RpcResult, async_trait }, proc_macros::rpc, tracing::info };
 use reth_revm::primitives::Address;
 use searcher_reth_extension::{
+    strategy::path_finding::{ types::Hop, RoutePath },
     SearcherExtension,
-    strategy::path_finding::candidate::get_candidates,
 };
-use searcher_reth_repository::{ SearcherRepository, types::DexType };
+use searcher_reth_repository::SearcherRepository;
 use serde::{ Deserialize, Serialize };
 use tokio::sync::RwLock;
 
@@ -23,15 +23,6 @@ pub struct UpdateProfitRateParameters {
     pub max_profit: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateRoutePathParameters {
-    pub new_tokens: Option<Vec<(Address, i64)>>,
-    pub deprecated_tokens: Option<Vec<Address>>,
-    pub new_dexs: Option<Vec<(DexType, Address, String)>>,
-    pub deprecated_dexs: Option<Vec<Address>>,
-}
-
 #[rpc(server, namespace = "searcher")]
 pub trait SearcherRpcApi {
     /// Set searcher contract
@@ -44,7 +35,7 @@ pub trait SearcherRpcApi {
 
     // Update config of dex and token in in-memory and storage
     #[method(name = "update_route_paths")]
-    async fn update_route_paths(&self, params: UpdateRoutePathParameters) -> RpcResult<()>;
+    async fn update_route_paths(&self) -> RpcResult<()>;
 }
 
 pub struct SearcherRpc {
@@ -59,10 +50,18 @@ impl SearcherRpc {
         extension: Arc<RwLock<SearcherExtension>>,
         repo: Arc<SearcherRepository>
     ) -> Self {
-        let dexs = repo.get_all_dexs(chain_id).await.unwrap();
-        let tokens = repo.get_all_tokens(chain_id).await.unwrap();
-        let route_paths = get_candidates(dexs, tokens);
-        extension.write().await.update_candidates(route_paths);
+        let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
+        let route_paths = repo.get_route_paths(chain_id).await.unwrap();
+        // convert hop::Model to Hop
+        for (dex, paths) in route_paths {
+            let mut dex_map: HashMap<Address, Vec<RoutePath>> = HashMap::new();
+            for path in paths {
+                let route_path: Vec<Hop> = path.into_iter().map(Hop::from).collect();
+                dex_map.entry(dex).or_default().push(route_path);
+            }
+            candidates.push(dex_map);
+        }
+        extension.write().await.update_candidates(candidates);
         Self { chain_id, extension, repo }
     }
 }
@@ -105,31 +104,25 @@ impl SearcherRpcApiServer for SearcherRpc {
         Ok(())
     }
 
-    async fn update_route_paths(&self, params: UpdateRoutePathParameters) -> RpcResult<()> {
+    async fn update_route_paths(&self) -> RpcResult<()> {
         let repo = self.repo.clone();
         let extension = self.extension.clone();
         let chain_id = self.chain_id;
         let _ = tokio::task::spawn(async move {
-            // update repository
-            repo.update_route_paths(
-                chain_id,
-                &params.new_tokens,
-                &params.deprecated_tokens,
-                &params.new_dexs,
-                &params.deprecated_dexs
-            ).await.unwrap();
+            let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
+            let route_paths = repo.get_route_paths(chain_id).await.unwrap();
+            // convert hop::Model to Hop
+            for (dex, paths) in route_paths {
+                let mut dex_map: HashMap<Address, Vec<RoutePath>> = HashMap::new();
+                for path in paths {
+                    let route_path: Vec<Hop> = path.into_iter().map(Hop::from).collect();
+                    dex_map.entry(dex).or_default().push(route_path);
+                }
+                candidates.push(dex_map);
+            }
 
-            let updated_dexs = repo.get_all_dexs(chain_id).await.unwrap();
-            let updated_tokens = repo.get_all_tokens(chain_id).await.unwrap();
-            let route_paths = get_candidates(updated_dexs, updated_tokens);
-            extension.write().await.update_candidates(route_paths);
-            info!(
-                target = "searcher_rpc",
-                new_tokens = ?params.new_tokens,
-                deprecated_tokens = ?params.deprecated_tokens,
-                new_dexs = ?params.new_dexs,
-                deprecated_dexs = ?params.deprecated_dexs
-            );
+            extension.write().await.update_candidates(candidates);
+            info!(target = "searcher_rpc", "Updated route paths for chain_id");
         }).await;
 
         Ok(())
