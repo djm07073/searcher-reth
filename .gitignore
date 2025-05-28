@@ -4,3 +4,4 @@ debug/
 target/
 env.toml
 deployments/data/*
+data/*

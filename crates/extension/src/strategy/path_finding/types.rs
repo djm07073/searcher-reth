@@ -1,6 +1,7 @@
 use alloy_primitives::{ Address, address };
 use alloy_sol_types::sol;
-use searcher_reth_repository::entity::hop::Model as HopModel;
+use searcher_reth_repository::model::Hop as HopModel;
+
 pub(super) const STRATEGY_CONTRACT_ADDRESS: Address = address!(
     "0000000000000000000000000000000000012345"
 );

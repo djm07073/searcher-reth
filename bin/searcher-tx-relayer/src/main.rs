@@ -4,10 +4,11 @@ mod socket;
 mod status;
 
 use alloy_primitives::Address;
-use config::Config;
+use config::IpcWalletConnector;
 use eyre::Result;
 use relayer::RelayerPool;
 use reth_tracing::tracing;
+use searcher_reth_config::SearcherConfig;
 use socket::SocketHandler;
 use status::Status;
 use std::sync::{ Arc, atomic::{ AtomicU8, Ordering } };
@@ -18,7 +19,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[arg(default_value = "./env.toml")]
+    #[arg(default_value = "env.toml")]
     config: String,
 }
 
@@ -32,7 +33,7 @@ async fn main() -> Result<()> {
         status = "initializing",
         "Starting tx-relayer service..."
     );
-    let config = Config::new(&cli.config)?;
+    let config = SearcherConfig::from_file(&cli.config)?;
     let wallets = config.get_wallets()?;
     let ipc = config.get_ipc();
 
@@ -40,7 +41,7 @@ async fn main() -> Result<()> {
 
     let pool = Arc::new(RelayerPool::new(ipc.clone(), wallets).await?);
     let socket = SocketHandler::new(config.network.socket_path)?;
-    let to = config.searcher.vault_address.parse::<Address>()?;
+    let to = config.relayer.vault_address.parse()?;
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;

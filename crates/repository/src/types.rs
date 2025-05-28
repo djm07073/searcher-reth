@@ -8,8 +8,8 @@ pub enum Priority {
     VeryLow,
 }
 
-impl From<i64> for Priority {
-    fn from(value: i64) -> Self {
+impl From<i32> for Priority {
+    fn from(value: i32) -> Self {
         match value {
             5 => Priority::VeryLow,
             4 => Priority::Low,

@@ -51,7 +51,7 @@ impl SearcherRpc {
         repo: Arc<SearcherRepository>
     ) -> Self {
         let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
-        let route_paths = repo.get_route_paths(chain_id).await.unwrap();
+        let route_paths = repo.get_route_paths(chain_id).unwrap();
         // convert hop::Model to Hop
         for (dex, paths) in route_paths {
             let mut dex_map: HashMap<Address, Vec<RoutePath>> = HashMap::new();
@@ -79,17 +79,16 @@ impl SearcherRpcApiServer for SearcherRpc {
         let chain_id = self.chain_id;
         let bytecode = params.bytecode.clone();
         self.extension.write().await.update_contract(params.bytecode);
-        let _ = tokio::task::spawn(async move {
-            let _bytecode = bytecode.clone();
-            repo.update_contract(chain_id, bytecode).await.unwrap();
+
+        let _ = tokio::task::spawn_blocking(move || {
+            repo.update_contract(chain_id, bytecode.clone()).unwrap();
             info!(
                 event = "contract_code_updated",
                 chain_id = chain_id,
-                bytecode = _bytecode,
+                bytecode = bytecode,
                 "Contract bytecode has been updated"
             );
-        }).await;
-
+        });
         Ok(())
     }
 
@@ -110,7 +109,7 @@ impl SearcherRpcApiServer for SearcherRpc {
         let chain_id = self.chain_id;
         let _ = tokio::task::spawn(async move {
             let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
-            let route_paths = repo.get_route_paths(chain_id).await.unwrap();
+            let route_paths = repo.get_route_paths(chain_id).unwrap();
             // convert hop::Model to Hop
             for (dex, paths) in route_paths {
                 let mut dex_map: HashMap<Address, Vec<RoutePath>> = HashMap::new();
@@ -123,7 +122,7 @@ impl SearcherRpcApiServer for SearcherRpc {
 
             extension.write().await.update_candidates(candidates);
             info!(target = "searcher_rpc", "Updated route paths for chain_id");
-        }).await;
+        });
 
         Ok(())
     }

@@ -30,3 +30,4 @@ clap = "4.5.38"
 tracing-subscriber = "0.3.19"
 tracing-appender = "0.2.3"
 searcher-reth-logger.workspace = true
+searcher-reth-config = { version = "0.1.0", path = "../../crates/config" }

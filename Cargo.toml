@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth", "bin/searcher-tx-relayer","crates/extension", "crates/repository", "crates/rpc", "crates/migration","crates/logger"]
+members = ["bin/searcher-reth", "bin/searcher-tx-relayer","crates/extension", "crates/repository", "crates/rpc","crates/logger", "crates/config"]
 resolver = "2"
 [workspace.package]
 version = "0.1.0"
@@ -16,7 +16,7 @@ searcher-reth-extension = { path = "crates/extension" }
 searcher-reth-repository = { path = "crates/repository" }
 searcher-reth-rpc = { path = "crates/rpc" }
 searcher-reth-logger = { path = "crates/logger" }
-migration = {path = "crates/migration" }
+searcher-reth-cofig = { path = "crates/config" }
 
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.3.12" }

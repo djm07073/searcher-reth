@@ -33,7 +33,7 @@ pub struct SetupArgs {
 }
 
 impl SearcherExtension {
-    pub fn new(vault_address: String, args: SetupArgs) -> Result<Self, Error> {
+    pub fn new(vault_address: Address, args: SetupArgs) -> Result<Self, Error> {
         let bytecode = args.bytecode.clone();
         let bytecode = Bytecode::new_raw_checked(Bytes(bytecode.into())).unwrap();
         let vault = Address::from_hex(vault_address).unwrap();
