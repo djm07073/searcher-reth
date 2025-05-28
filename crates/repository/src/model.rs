@@ -1,5 +1,5 @@
-use diesel::prelude::*;
 use crate::schema::*;
+use diesel::prelude::*;
 
 #[derive(Debug, Clone, Queryable, Identifiable)]
 #[diesel(primary_key(chain_id, address))]

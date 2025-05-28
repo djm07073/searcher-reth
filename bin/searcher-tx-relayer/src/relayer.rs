@@ -1,21 +1,17 @@
-use std::sync::{ Arc, atomic::{ AtomicU64, AtomicUsize, Ordering } };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, AtomicUsize, Ordering},
+};
 
-use alloy::{ network::{ EthereumWallet, TransactionBuilder }, rpc::types::TransactionRequest };
-use alloy_primitives::{ Address, ChainId, FixedBytes };
+use alloy::{
+    network::{EthereumWallet, TransactionBuilder},
+    rpc::types::TransactionRequest,
+};
+use alloy_primitives::{Address, ChainId, FixedBytes};
 use alloy_provider::{
-    Identity,
-    IpcConnect,
-    Provider,
-    ProviderBuilder,
-    RootProvider,
+    Identity, IpcConnect, Provider, ProviderBuilder, RootProvider,
     fillers::{
-        BlobGasFiller,
-        ChainIdFiller,
-        FillProvider,
-        GasFiller,
-        JoinFill,
-        NonceFiller,
-        WalletFiller,
+        BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
     },
 };
 use eyre::Result;
@@ -28,11 +24,11 @@ pub(crate) type IpcWalletProvider = FillProvider<
     JoinFill<
         JoinFill<
             Identity,
-            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>
+            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
         >,
-        WalletFiller<EthereumWallet>
+        WalletFiller<EthereumWallet>,
     >,
-    RootProvider
+    RootProvider,
 >;
 
 pub(crate) struct Relayer {
@@ -49,33 +45,27 @@ pub(crate) struct RelayerPool {
 impl RelayerPool {
     pub async fn new(
         icp_connect: IpcConnect<String>,
-        wallets: Vec<EthereumWallet>
+        wallets: Vec<EthereumWallet>,
     ) -> Result<Self> {
         let provider = ProviderBuilder::new().connect_ipc(icp_connect.clone()).await?;
         let chain_id = provider.get_chain_id().await?;
 
-        let relayers = try_join_all(
-            wallets.into_iter().map(|wallet| {
-                let icp = icp_connect.clone();
-                async move {
-                    let provider = ProviderBuilder::new()
-                        .wallet(wallet.clone())
-                        .connect_ipc(icp).await?;
-                    let signer_address = wallet.default_signer().address();
-                    let account_info = provider.get_account_info(signer_address).await?;
-                    let nonce = account_info.nonce;
+        let relayers = try_join_all(wallets.into_iter().map(|wallet| {
+            let icp = icp_connect.clone();
+            async move {
+                let provider =
+                    ProviderBuilder::new().wallet(wallet.clone()).connect_ipc(icp).await?;
+                let signer_address = wallet.default_signer().address();
+                let account_info = provider.get_account_info(signer_address).await?;
+                let nonce = account_info.nonce;
 
-                    Ok::<Arc<Mutex<Relayer>>, eyre::Error>(
-                        Arc::new(
-                            Mutex::new(Relayer {
-                                provider,
-                                nonce: AtomicU64::new(nonce),
-                            })
-                        )
-                    )
-                }
-            })
-        ).await?;
+                Ok::<Arc<Mutex<Relayer>>, eyre::Error>(Arc::new(Mutex::new(Relayer {
+                    provider,
+                    nonce: AtomicU64::new(nonce),
+                })))
+            }
+        }))
+        .await?;
 
         Ok(Self { chain_id, relayers, current: AtomicUsize::new(0) })
     }
@@ -108,14 +98,13 @@ impl RelayerPool {
             Ok(receipt) => {
                 let tx_hash = receipt.transaction_hash;
                 let gas_used = receipt.gas_used;
-                match
-                    relayer.nonce.compare_exchange(
-                        nonce,
-                        nonce + 1,
-                        Ordering::SeqCst,
-                        Ordering::Acquire
-                    )
-                {
+                // TODO: If the transaction is confirmed, query the balance of the relayer's wallet
+                match relayer.nonce.compare_exchange(
+                    nonce,
+                    nonce + 1,
+                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                ) {
                     Ok(_) => {
                         //TODO: handle event logs to get profit
                         tracing::info!(
@@ -139,13 +128,7 @@ impl RelayerPool {
                             relayer = current,
                             "Failed to update nonce"
                         );
-                        Err(
-                            eyre::eyre!(
-                                "Failed to update nonce: {}, relayer: {}",
-                                nonce,
-                                current
-                            )
-                        )
+                        Err(eyre::eyre!("Failed to update nonce: {}, relayer: {}", nonce, current))
                     }
                 }
             }

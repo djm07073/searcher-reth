@@ -1,4 +1,4 @@
-use alloy::{ network::EthereumWallet, signers::local::PrivateKeySigner };
+use alloy::{network::EthereumWallet, signers::local::PrivateKeySigner};
 use alloy_provider::IpcConnect;
 use eyre::Result;
 use searcher_reth_config::SearcherConfig;
@@ -10,7 +10,8 @@ pub trait IpcWalletConnector {
 
 impl IpcWalletConnector for SearcherConfig {
     fn get_wallets(&self) -> Result<Vec<EthereumWallet>> {
-        self.relayer.private_keys
+        self.relayer
+            .private_keys
             .iter()
             .map(|key| {
                 let pk_signer: PrivateKeySigner = key.parse()?;

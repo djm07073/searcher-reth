@@ -1,7 +1,8 @@
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct SearcherConfig {
     pub relayer: TxRelayerConfig,
     pub database: DatabaseConfig,
@@ -10,23 +11,27 @@ pub struct SearcherConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct TxRelayerConfig {
     pub vault_address: String,
     pub private_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct DatabaseConfig {
     pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct LoggingConfig {
     pub level: String,
     pub file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct NetworkConfig {
     /// Path to the IPC socket for the reth node communication with tx-relayer
     pub ipc_path: String,

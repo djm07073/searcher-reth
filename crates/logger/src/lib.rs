@@ -1,13 +1,14 @@
-use reth_tracing::tracing::{ self, info_span };
-use reth_tracing::tracing_appender::{ non_blocking, rolling::daily };
-use reth_tracing::tracing_subscriber;
+use reth_tracing::{
+    tracing::{self, info_span},
+    tracing_appender::{non_blocking, rolling::daily},
+    tracing_subscriber,
+};
 
 pub fn init(service: &str) -> non_blocking::WorkerGuard {
     let file_appender = daily(&format!("/var/log/{}", service), &format!("{}.log", service));
     let (writer, guard) = non_blocking(file_appender);
 
-    let subscriber = tracing_subscriber
-        ::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_writer(writer)
         .with_thread_ids(true)
         .json()

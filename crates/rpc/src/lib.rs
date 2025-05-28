@@ -1,13 +1,17 @@
-use std::{ collections::HashMap, sync::Arc };
+use std::{collections::HashMap, sync::Arc};
 
-use jsonrpsee::{ core::{ RpcResult, async_trait }, proc_macros::rpc, tracing::info };
+use jsonrpsee::{
+    core::{RpcResult, async_trait},
+    proc_macros::rpc,
+    tracing::info,
+};
 use reth_revm::primitives::Address;
 use searcher_reth_extension::{
-    strategy::path_finding::{ types::Hop, RoutePath },
     SearcherExtension,
+    strategy::path_finding::{RoutePath, types::Hop},
 };
 use searcher_reth_repository::SearcherRepository;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -48,7 +52,7 @@ impl SearcherRpc {
     pub async fn new(
         chain_id: u64,
         extension: Arc<RwLock<SearcherExtension>>,
-        repo: Arc<SearcherRepository>
+        repo: Arc<SearcherRepository>,
     ) -> Self {
         let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
         let route_paths = repo.get_route_paths(chain_id).unwrap();
