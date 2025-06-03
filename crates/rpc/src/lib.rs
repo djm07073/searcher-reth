@@ -84,7 +84,7 @@ impl SearcherRpcApiServer for SearcherRpc {
         let bytecode = params.bytecode.clone();
         self.extension.write().await.update_contract(params.bytecode);
 
-        let _r= tokio::task::spawn_blocking(move || {
+        let _r = tokio::task::spawn_blocking(move || {
             repo.update_contract(chain_id, bytecode.clone()).unwrap();
             info!(
                 event = "contract_code_updated",

@@ -1,23 +1,20 @@
-use std::{ future::Future, sync::Arc };
+use std::{future::Future, sync::Arc};
 
-use alloy::network::EthereumWallet;
+use alloy::{network::EthereumWallet, signers::local::PrivateKeySigner};
 use eyre::Result;
 use futures_util::StreamExt;
 
 use crate::{
     SearcherExtension,
-    strategy::path_finding::{ PathFinder, strategy::Strategy, types::executeCall },
+    strategy::path_finding::{PathFinder, strategy::Strategy, types::executeCall},
 };
 use alloy_sol_types::SolCall;
-use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
-use reth_node_api::{ FullNodeComponents, FullNodeTypes };
+use reth_exex::{ExExContext, ExExEvent, ExExNotification};
+use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
-    BlockHashReader,
-    DatabaseProviderFactory,
-    LatestStateProviderRef,
-    StateCommitmentProvider,
+    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
 };
-use searcher_reth_relayer_pool::{ RelayerMessage, RelayerPool };
+use searcher_reth_relayer_pool::{RelayerMessage, RelayerPool};
 use tokio::sync::RwLock;
 
 use reth_tracing::tracing;
@@ -28,13 +25,12 @@ impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
         extension: Arc<RwLock<SearcherExtension>>,
-        wallets: Vec<EthereumWallet>
-    )
-        -> Result<impl Future<Output = Result<()>>>
-        where
-            Node: FullNodeComponents,
-            <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider: BlockHashReader +
-                StateCommitmentProvider
+        signers: Vec<PrivateKeySigner>,
+    ) -> Result<impl Future<Output = Result<()>>>
+    where
+        Node: FullNodeComponents,
+        <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
+            BlockHashReader + StateCommitmentProvider,
     {
         Ok(async move {
             let extension = extension.read().await;
@@ -42,7 +38,7 @@ impl SearcherExEx {
             let bytecode = extension.contract.clone();
             let candidates = extension.candidates.clone();
 
-            let relayer_pool = Arc::new(RelayerPool::new(ctx.components.clone(), wallets).await?);
+            let relayer_pool = Arc::new(RelayerPool::new(ctx.components.clone(), signers).await?);
             let channel = Arc::new(relayer_pool.start().await?);
             tracing::info!(
                 target: "reth-exex",
@@ -72,7 +68,7 @@ impl SearcherExEx {
                         extension.vault,
                         candidates.clone(),
                         extension.max_profit_ratio,
-                        extension.min_profit_ratio
+                        extension.min_profit_ratio,
                     )?;
 
                     // send the encoded data to the socket
@@ -84,7 +80,9 @@ impl SearcherExEx {
                             .collect::<Vec<String>>()
                             .join(", ");
                         let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
-                        let result = channel.send(RelayerMessage { to: vault_address, data: calldata }).await;
+                        let result = channel
+                            .send(RelayerMessage { to: vault_address, data: calldata })
+                            .await;
                         if let Err(e) = result {
                             tracing::error!(
                                 target: "reth-exex",

@@ -1,22 +1,31 @@
 mod signals;
 
-use std::sync::{ Arc, atomic::{ AtomicU64, AtomicU8, AtomicUsize, Ordering } };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
+};
 
-use alloy::{ consensus::TxEip1559, network::EthereumWallet };
-use alloy_primitives::{ Address, ChainId, FixedBytes, TxKind };
+use alloy::{
+    consensus::TxEip1559,
+    eips::Encodable2718,
+    network::{EthereumWallet, NetworkWallet, TransactionBuilder, TxSignerSync},
+    rpc::types::TransactionRequest,
+    signers::local::PrivateKeySigner,
+};
+use alloy_primitives::{Address, ChainId, FixedBytes, TxKind};
 use eyre::Result;
-use futures_util::{ future::try_join_all, StreamExt };
+use futures_util::{StreamExt, future::try_join_all};
 use reth::{
     api::FullNodeComponents,
-    transaction_pool::{ TransactionEvent, TransactionOrigin, TransactionPool },
     network::NetworkInfo,
+    transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
 };
 use reth_provider::AccountReader;
 use reth_tracing::tracing;
 use tokio::sync::Mutex;
 
 pub(crate) struct Relayer {
-    wallet: EthereumWallet,
+    signer: PrivateKeySigner,
     nonce: AtomicU64,
 }
 
@@ -27,9 +36,9 @@ pub struct RelayerPool<FC: FullNodeComponents> {
     current: AtomicUsize,
 }
 
-use tokio::sync::mpsc::{ self, Sender, Receiver };
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::signals::{ handle_signals, Status };
+use crate::signals::{Status, handle_signals};
 
 #[derive(Debug)]
 pub struct RelayerMessage {
@@ -38,21 +47,17 @@ pub struct RelayerMessage {
 }
 
 impl<FC: FullNodeComponents> RelayerPool<FC> {
-    pub async fn new(fnc: FC, wallets: Vec<EthereumWallet>) -> Result<Self> {
+    pub async fn new(fnc: FC, signers: Vec<PrivateKeySigner>) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
-        let relayer_futures = wallets.into_iter().map(|wallet| {
+        let relayer_futures = signers.into_iter().map(|signer| {
             let fnc = fnc.clone();
             async move {
-                let address = wallet.default_signer().address();
+                let address = signer.address();
                 let account = fnc.provider().basic_account(&address).unwrap().unwrap();
-                Ok::<_, eyre::Report>(
-                    Arc::new(
-                        Mutex::new(Relayer {
-                            wallet,
-                            nonce: AtomicU64::new(account.nonce),
-                        })
-                    )
-                )
+                Ok::<_, eyre::Report>(Arc::new(Mutex::new(Relayer {
+                    signer,
+                    nonce: AtomicU64::new(account.nonce),
+                })))
             }
         });
         let relayers = try_join_all(relayer_futures).await?;
@@ -91,7 +96,7 @@ impl<FC: FullNodeComponents> RelayerPool<FC> {
         let max_fee_per_gas = 20_000_000_000;
         let max_priority_fee_per_gas = 1_000_000_000;
         let gas_limit = 21_000;
-        let from = relayer.wallet.default_signer().address();
+        let from = relayer.signer.address();
         tracing::info!(
             event = "transaction_send",
             relayer = current,
@@ -100,6 +105,7 @@ impl<FC: FullNodeComponents> RelayerPool<FC> {
             from = ?from,
             "Sending transaction"
         );
+
         let tx = TxEip1559 {
             to: TxKind::Call(to),
             chain_id: self.chain_id,
@@ -110,12 +116,21 @@ impl<FC: FullNodeComponents> RelayerPool<FC> {
             input: data.into(),
             ..Default::default()
         };
-
-        // TODO: Sign the transaction using the relayer's wallet
-        let pool_tx = todo!();
-        let tx_events = self.fnc
+        // let tx = TransactionRequest::default()
+        //     .with_to(to)
+        //     .with_nonce(nonce)
+        //     .with_chain_id(self.chain_id)
+        //     .with_gas_limit(21_000)
+        //     .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
+        //     .with_max_fee_per_gas(max_fee_per_gas);
+        // // TODO: Sign the transaction using the relayer's wallet
+        // let _wallet = EthereumWallet::from(relayer.signer);
+        // let tx_envelope = tx.build(&_wallet).await?;
+        let tx_events = self
+            .fnc
             .pool()
-            .add_transaction_and_subscribe(TransactionOrigin::Local, pool_tx).await?;
+            .add_transaction_and_subscribe(TransactionOrigin::Local, todo!())
+            .await?;
         let tx_hash = tx_events.hash();
         while let Some(event) = tx_events.next().await {
             match event {
