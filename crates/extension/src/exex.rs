@@ -71,7 +71,6 @@ impl SearcherExEx {
                         extension.min_profit_ratio,
                     )?;
 
-                    // send the encoded data to the socket
                     let channel = channel.clone();
                     tokio::spawn(async move {
                         let routes = filtered_candidates
@@ -92,7 +91,7 @@ impl SearcherExEx {
                             );
                             return;
                         }
-                        reth_tracing::tracing::info!(
+                        tracing::info!(
                             target: "reth-exex",
                             action = "send_calldata_to_relayer_pool",
                             routes = routes,

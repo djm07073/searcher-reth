@@ -5,3 +5,4 @@ target/
 env.toml
 deployments/data/*
 data/*
+seed-data-*

@@ -1,10 +1,7 @@
-use alloy::{
-    network::EthereumWallet,
-    signers::local::{coins_bip39::English, MnemonicBuilder},
-};
+use alloy::signers::local::{ coins_bip39::English, MnemonicBuilder };
 use alloy_signer_local::PrivateKeySigner;
 use eyre::Result;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +23,8 @@ impl TxRelayerConfig {
     pub fn get_signers(&self) -> Result<Vec<PrivateKeySigner>> {
         let mut signers = Vec::with_capacity(10);
         for i in 0..10 {
-            let wallet = MnemonicBuilder::<English>::default()
+            let wallet = MnemonicBuilder::<English>
+                ::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;
