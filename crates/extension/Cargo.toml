@@ -6,7 +6,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-
 # reth
 reth-chainspec.workspace = true
 reth-evm.workspace = true
@@ -48,6 +47,9 @@ searcher-reth-repository.workspace = true
 
 itertools = "0.11"
 rayon = "1.10.0"
+reth-transaction-pool.workspace = true
+searcher-reth-relayer-pool.workspace = true
+alloy = "1.0.6"
 
 [dev-dependencies]
 reth-testing-utils.workspace = true

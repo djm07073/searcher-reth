@@ -47,6 +47,7 @@ tracing-appender = "0.2.3"
 tracing-subscriber = "0.3.19"
 searcher-reth-logger.workspace = true
 searcher-reth-config = { version = "0.1.0", path = "../../crates/config" }
+searcher-reth-relayer-pool.workspace = true
 
 [dev-dependencies]
 reth-testing-utils.workspace = true

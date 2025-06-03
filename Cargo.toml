@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth", "bin/searcher-tx-relayer","crates/extension", "crates/repository", "crates/rpc","crates/logger", "crates/config"]
+members = ["bin/searcher-reth", "crates/relayer-pool","crates/extension", "crates/repository", "crates/rpc","crates/logger", "crates/config"]
 resolver = "2"
 [workspace.package]
 version = "0.1.0"
@@ -11,7 +11,7 @@ publish = false
 [workspace.dependencies]
 #searcher-reth
 searcher-reth = { path = "bin/searcher-reth" }
-searcher-tx-relayer = { path = "bin/searcher-tx-relayer" }
+searcher-reth-relayer-pool = { path = "crates/relayer-pool" }
 searcher-reth-extension = { path = "crates/extension" }
 searcher-reth-repository = { path = "crates/repository" }
 searcher-reth-rpc = { path = "crates/rpc" }

@@ -5,7 +5,7 @@ use reth_tracing::{
 };
 
 pub fn init(service: &str) -> non_blocking::WorkerGuard {
-    let file_appender = daily(&format!("/var/log/{}", service), &format!("{}.log", service));
+    let file_appender = daily(format!("/var/log/{}", service), format!("{}.log", service));
     let (writer, guard) = non_blocking(file_appender);
 
     let subscriber = tracing_subscriber::fmt()

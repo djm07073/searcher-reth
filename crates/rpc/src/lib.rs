@@ -84,7 +84,7 @@ impl SearcherRpcApiServer for SearcherRpc {
         let bytecode = params.bytecode.clone();
         self.extension.write().await.update_contract(params.bytecode);
 
-        let _ = tokio::task::spawn_blocking(move || {
+        let _r= tokio::task::spawn_blocking(move || {
             repo.update_contract(chain_id, bytecode.clone()).unwrap();
             info!(
                 event = "contract_code_updated",
@@ -111,7 +111,7 @@ impl SearcherRpcApiServer for SearcherRpc {
         let repo = self.repo.clone();
         let extension = self.extension.clone();
         let chain_id = self.chain_id;
-        let _ = tokio::task::spawn(async move {
+        let _r = tokio::task::spawn(async move {
             let mut candidates: Vec<HashMap<Address, Vec<RoutePath>>> = Vec::new();
             let route_paths = repo.get_route_paths(chain_id).unwrap();
             // convert hop::Model to Hop

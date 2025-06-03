@@ -1,4 +1,6 @@
-use serde::{Deserialize, Serialize};
+use alloy::{ network::EthereumWallet, signers::local::PrivateKeySigner };
+use eyre::Result;
+use serde::{ Deserialize, Serialize };
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,7 +9,6 @@ pub struct SearcherConfig {
     pub relayer: TxRelayerConfig,
     pub database: DatabaseConfig,
     pub logging: LoggingConfig,
-    pub network: NetworkConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +16,18 @@ pub struct SearcherConfig {
 pub struct TxRelayerConfig {
     pub vault_address: String,
     pub private_keys: Vec<String>,
+}
+
+impl TxRelayerConfig {
+    pub fn get_wallets(&self) -> Result<Vec<EthereumWallet>> {
+        self.private_keys
+            .iter()
+            .map(|key| {
+                let pk_signer: PrivateKeySigner = key.parse()?;
+                Ok(EthereumWallet::new(pk_signer))
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,15 +41,6 @@ pub struct DatabaseConfig {
 pub struct LoggingConfig {
     pub level: String,
     pub file: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct NetworkConfig {
-    /// Path to the IPC socket for the reth node communication with tx-relayer
-    pub ipc_path: String,
-    /// Path to the Unix socket for the searcher-exex communication with tx-relayer
-    pub socket_path: String,
 }
 
 impl SearcherConfig {

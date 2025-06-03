@@ -1,5 +1,5 @@
 [package]
-name = "searcher-tx-relayer"
+name = "searcher-reth-relayer-pool"
 version = "0.0.0"
 publish = false
 edition.workspace = true
