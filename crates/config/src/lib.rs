@@ -1,4 +1,4 @@
-use alloy::{ network::EthereumWallet, signers::local::PrivateKeySigner };
+use alloy::{ network::EthereumWallet, signers::local::{ coins_bip39::English, MnemonicBuilder } };
 use eyre::Result;
 use serde::{ Deserialize, Serialize };
 use std::path::PathBuf;
@@ -15,18 +15,21 @@ pub struct SearcherConfig {
 #[serde(rename_all = "kebab-case")]
 pub struct TxRelayerConfig {
     pub vault_address: String,
-    pub private_keys: Vec<String>,
+    pub mnemonic: String,
 }
 
 impl TxRelayerConfig {
     pub fn get_wallets(&self) -> Result<Vec<EthereumWallet>> {
-        self.private_keys
-            .iter()
-            .map(|key| {
-                let pk_signer: PrivateKeySigner = key.parse()?;
-                Ok(EthereumWallet::new(pk_signer))
-            })
-            .collect()
+        let mut wallets = Vec::with_capacity(10);
+        for i in 0..10 {
+            let wallet = MnemonicBuilder::<English>
+                ::default()
+                .phrase(self.mnemonic.clone())
+                .index(i)?
+                .build()?;
+            wallets.push(wallet.into());
+        }
+        Ok(wallets)
     }
 }
 
