@@ -36,7 +36,6 @@ tokio.workspace = true
 
 # misc
 eyre.workspace = true
-foundry-blob-explorers.workspace = true
 once_cell = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde_json = "1"
@@ -46,8 +45,7 @@ searcher-reth-rpc.workspace = true
 tracing-appender = "0.2.3"
 tracing-subscriber = "0.3.19"
 searcher-reth-logger.workspace = true
-searcher-reth-config = { version = "0.1.0", path = "../../crates/config" }
-searcher-reth-relayer-pool.workspace = true
+searcher-reth-config.workspace = true
 
 [dev-dependencies]
 reth-testing-utils.workspace = true

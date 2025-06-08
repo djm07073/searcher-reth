@@ -1,31 +1,33 @@
-mod signals;
+use std::sync::{ Arc, atomic::{ AtomicU8, AtomicU64, AtomicUsize, Ordering } };
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
-};
-
-use alloy::{
-    consensus::TxEip1559,
-    eips::Encodable2718,
-    network::{EthereumWallet, NetworkWallet, TransactionBuilder, TxSignerSync},
-    rpc::types::TransactionRequest,
-    signers::local::PrivateKeySigner,
-};
-use alloy_primitives::{Address, ChainId, FixedBytes, TxKind};
+use alloy_network::{ Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder };
+use alloy_eips::{ Decodable2718 };
+use alloy_primitives::{ Address, ChainId, FixedBytes };
 use eyre::Result;
-use futures_util::{StreamExt, future::try_join_all};
+use futures_util::{ StreamExt, future::try_join_all };
 use reth::{
     api::FullNodeComponents,
-    network::NetworkInfo,
-    transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
+    network::{ types::Encodable2718, NetworkInfo },
+    rpc::{
+        api::eth::helpers::EthTransactions,
+        server_types::eth::SignError,
+        types::{ BlobTransactionSidecar, TransactionRequest },
+    },
+    transaction_pool::{ EthPoolTransaction, TransactionEvent, TransactionOrigin, TransactionPool },
+};
+use reth_primitives::{
+    transaction::SignedTransaction,
+    PooledTransaction,
+    Recovered,
+    TransactionSigned,
 };
 use reth_provider::AccountReader;
 use reth_tracing::tracing;
+use reth_transaction_pool::{ EthPooledTransaction, Pool };
 use tokio::sync::Mutex;
 
 pub(crate) struct Relayer {
-    signer: PrivateKeySigner,
+    wallet: EthereumWallet,
     nonce: AtomicU64,
 }
 
@@ -36,9 +38,9 @@ pub struct RelayerPool<FC: FullNodeComponents> {
     current: AtomicUsize,
 }
 
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{ self, Receiver, Sender };
 
-use crate::signals::{Status, handle_signals};
+use crate::relayer_pool::signals::{ Status, handle_signals };
 
 #[derive(Debug)]
 pub struct RelayerMessage {
@@ -46,18 +48,24 @@ pub struct RelayerMessage {
     pub data: Vec<u8>,
 }
 
-impl<FC: FullNodeComponents> RelayerPool<FC> {
-    pub async fn new(fnc: FC, signers: Vec<PrivateKeySigner>) -> Result<Self> {
+impl<FC> RelayerPool<FC>
+    where FC: FullNodeComponents, FC::Pool: TransactionPool<Transaction = EthPooledTransaction>
+{
+    pub async fn new(fnc: FC, wallets: Vec<EthereumWallet>) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
-        let relayer_futures = signers.into_iter().map(|signer| {
+        let relayer_futures = wallets.into_iter().map(|wallet| {
             let fnc = fnc.clone();
             async move {
-                let address = signer.address();
+                let address = wallet.default_signer().address();
                 let account = fnc.provider().basic_account(&address).unwrap().unwrap();
-                Ok::<_, eyre::Report>(Arc::new(Mutex::new(Relayer {
-                    signer,
-                    nonce: AtomicU64::new(account.nonce),
-                })))
+                Ok::<_, eyre::Report>(
+                    Arc::new(
+                        Mutex::new(Relayer {
+                            wallet,
+                            nonce: AtomicU64::new(account.nonce),
+                        })
+                    )
+                )
             }
         });
         let relayers = try_join_all(relayer_futures).await?;
@@ -96,7 +104,7 @@ impl<FC: FullNodeComponents> RelayerPool<FC> {
         let max_fee_per_gas = 20_000_000_000;
         let max_priority_fee_per_gas = 1_000_000_000;
         let gas_limit = 21_000;
-        let from = relayer.signer.address();
+        let from = relayer.wallet.default_signer().address();
         tracing::info!(
             event = "transaction_send",
             relayer = current,
@@ -106,49 +114,41 @@ impl<FC: FullNodeComponents> RelayerPool<FC> {
             "Sending transaction"
         );
 
-        let tx = TxEip1559 {
-            to: TxKind::Call(to),
-            chain_id: self.chain_id,
-            nonce,
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-            gas_limit,
-            input: data.into(),
-            ..Default::default()
-        };
-        // let tx = TransactionRequest::default()
-        //     .with_to(to)
-        //     .with_nonce(nonce)
-        //     .with_chain_id(self.chain_id)
-        //     .with_gas_limit(21_000)
-        //     .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
-        //     .with_max_fee_per_gas(max_fee_per_gas);
-        // // TODO: Sign the transaction using the relayer's wallet
-        // let _wallet = EthereumWallet::from(relayer.signer);
-        // let tx_envelope = tx.build(&_wallet).await?;
-        let tx_events = self
-            .fnc
+        let tx = TransactionRequest::default()
+            .with_to(to)
+            .with_input(data)
+            .with_nonce(nonce)
+            .with_chain_id(self.chain_id)
+            .with_gas_limit(21_000)
+            .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
+            .with_max_fee_per_gas(max_fee_per_gas);
+
+        let txn_envelope = tx.build(&relayer.wallet).await?;
+        let encoded_length = txn_envelope.encoded_2718().len();
+        let signed_tx: TransactionSigned = txn_envelope.into();
+        let recovered_tx = Recovered::new_unchecked(signed_tx, from);
+        let pooled_tx = EthPooledTransaction::new(recovered_tx, encoded_length);
+
+        let mut tx_events = self.fnc
             .pool()
-            .add_transaction_and_subscribe(TransactionOrigin::Local, todo!())
-            .await?;
+            .add_transaction_and_subscribe(TransactionOrigin::Local, pooled_tx).await?;
         let tx_hash = tx_events.hash();
         while let Some(event) = tx_events.next().await {
             match event {
                 TransactionEvent::Mined(block_hash) => {
                     tracing::info!(
                         event = "transaction_mined",
-                        status = "success",
                         block_hash = ?block_hash,
                         relayer = current,
                         nonce = nonce,
                         "Transaction mined successfully"
                     );
+                    relayer.nonce.fetch_add(1, Ordering::SeqCst);
                     return Ok(tx_hash);
                 }
                 TransactionEvent::Propagated(kind) => {
                     tracing::info!(
                         event = "transaction_propagated",
-                        status = "success",
                         relayer = current,
                         nonce = nonce,
                         kind = ?kind,
