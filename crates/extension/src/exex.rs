@@ -1,8 +1,11 @@
 use std::{ future::Future, sync::Arc };
 use alloy_network::EthereumWallet;
+use alloy_primitives::Address;
 use eyre::Result;
 use futures_util::StreamExt;
 use alloy_sol_types::SolCall;
+
+use reth_transaction_pool::TransactionPool;
 use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
 use reth_node_api::{ FullNodeComponents, FullNodeTypes };
 use reth_provider::{
@@ -15,9 +18,9 @@ use tokio::sync::RwLock;
 use reth_tracing::tracing;
 
 use crate::{
-    relayer_pool::{ RelayerPool, RelayerMessage },
+    relayer_pool::{ RelayerMessage, RelayerPool },
+    strategy::{ path_finding::{ types::executeCall, PathFinder }, strategy::Strategy },
     SearcherExtension,
-    strategy::path_finding::{ PathFinder, strategy::Strategy, types::executeCall },
 };
 
 pub struct SearcherExEx;
@@ -27,7 +30,7 @@ impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
         extension: Arc<RwLock<SearcherExtension>>,
-        wallets: Vec<EthereumWallet>
+        wallet: (EthereumWallet, Vec<Address>)
     )
         -> Result<impl Future<Output = Result<()>>>
         where
@@ -41,15 +44,14 @@ impl SearcherExEx {
             let bytecode = extension.contract.clone();
             let candidates = extension.candidates.clone();
 
-            let relayer_pool = Arc::new(RelayerPool::new(ctx.components.clone(), wallets).await?);
+            let relayer_pool = Arc::new(RelayerPool::new(ctx.components.clone(), wallet).await?);
             let relayer_tx = Arc::new(relayer_pool.start().await?);
             tracing::info!(
                 target: "reth-exex",
                 action = "relayer_pool_start",
                 "Starting Relayer Pool"
             );
-            // TODO: check mempool for filtered candidates
-            // ctx.components.pool().pending_transactions_listener(origin, transaction);
+
             while let Some(notification) = ctx.notifications.next().await {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
@@ -66,9 +68,17 @@ impl SearcherExEx {
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
                     // create a task to simulate contract execution in searcher executor parallel
+                    let pending_txs = ctx.components
+                        .pool()
+                        .pending_transactions()
+                        .iter()
+                        .map(|tx| tx.transaction.clone())
+                        .collect();
+
                     let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
                     let filtered_candidates = finder.filter_candidates(
                         extension.vault,
+                        pending_txs,
                         candidates.clone(),
                         extension.max_profit_ratio,
                         extension.min_profit_ratio

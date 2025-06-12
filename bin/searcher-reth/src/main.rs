@@ -19,20 +19,17 @@ fn main() -> eyre::Result<()> {
     let vault_address = config.relayer.vault_address
         .parse()
         .map_err(|_| eyre!("Invalid vault address"))?;
-    let wallets = config.relayer.get_wallets().unwrap();
+    let wallet = config.relayer.get_wallet().unwrap();
+    let repository = Arc::new(SearcherRepository::new(config.database.path.to_str().unwrap()));
     // database
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
         let chain_id = builder.config().chain.chain.id();
         let extension = Arc::new(RwLock::new(SearcherExtension::new(vault_address, args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
-
         let handle = builder
             .node(EthereumNode::default())
             .extend_rpc_modules(move |ctx| {
-                let repository = Arc::new(
-                    SearcherRepository::new(config.database.path.to_str().unwrap())
-                );
                 let searcher_rpc: SearcherRpc = std::thread
                     ::spawn(move || {
                         let rt = tokio::runtime::Runtime
@@ -43,7 +40,7 @@ fn main() -> eyre::Result<()> {
                         )
                     })
                     .join()
-                    .map_err(|_| eyre!("failed to join ShadowRpc thread"))
+                    .map_err(|_| eyre!("failed to join Searcher Rpc thread"))
                     .unwrap();
                 ctx.modules
                     .merge_configured(searcher_rpc.into_rpc())
@@ -58,7 +55,7 @@ fn main() -> eyre::Result<()> {
             })
             .install_exex("SearcherExEx", {
                 move |ctx| {
-                    let exex = SearcherExEx::exex(ctx, extension_for_exex, wallets);
+                    let exex = SearcherExEx::exex(ctx, extension_for_exex, wallet);
                     info!(
                         target: "reth-exex",
                         event = "exex_installation",

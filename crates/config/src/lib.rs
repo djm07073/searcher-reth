@@ -1,5 +1,6 @@
 use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
 use alloy_network::EthereumWallet;
+use alloy_primitives::Address;
 
 use eyre::Result;
 use serde::{ Deserialize, Serialize };
@@ -21,17 +22,19 @@ pub struct TxRelayerConfig {
 }
 
 impl TxRelayerConfig {
-    pub fn get_wallets(&self) -> Result<Vec<EthereumWallet>> {
-        let mut wallets = Vec::with_capacity(10);
+    pub fn get_wallet(&self) -> Result<(EthereumWallet, Vec<Address>)> {
+        let mut wallet = EthereumWallet::default();
+        let mut addresses = Vec::new();
         for i in 0..10 {
-            let wallet = MnemonicBuilder::<English>
+            let signer = MnemonicBuilder::<English>
                 ::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;
-            wallets.push(wallet.into());
+            wallet.register_signer(signer.clone());
+            addresses.push(signer.address());
         }
-        Ok(wallets)
+        Ok((wallet, addresses))
     }
 }
 
