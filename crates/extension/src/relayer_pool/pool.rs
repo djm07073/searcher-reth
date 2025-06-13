@@ -1,10 +1,11 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
+    atomic::{AtomicU8, AtomicU64, Ordering},
 };
 
-use alloy_network::{Ethereum, EthereumWallet, TransactionBuilder};
-use alloy_primitives::{Address, ChainId, FixedBytes, map::foldhash::HashMap};
+use alloy_eips::Encodable2718;
+use alloy_network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder};
+use alloy_primitives::{Address, ChainId, FixedBytes};
 use eyre::Result;
 use futures_util::StreamExt;
 use reth::{
@@ -16,7 +17,7 @@ use reth::{
 use reth_primitives::{Recovered, TransactionSigned};
 use reth_provider::AccountReader;
 use reth_tracing::tracing;
-use reth_transaction_pool::PoolTransaction;
+use reth_transaction_pool::EthPooledTransaction;
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -33,13 +34,13 @@ pub struct RelayerPool<FC: FullNodeComponents> {
 #[derive(Debug)]
 pub struct RelayerMessage {
     pub to: Address,
-    pub data: Vec<u8>,
+    pub calldata: Vec<u8>,
 }
 
 impl<FC> RelayerPool<FC>
 where
     FC: FullNodeComponents,
-    <FC::Pool as TransactionPool>::Transaction: PoolTransaction,
+    FC::Pool: TransactionPool<Transaction = EthPooledTransaction>,
 {
     pub async fn new(fnc: FC, wallet: (EthereumWallet, Vec<Address>)) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
@@ -73,7 +74,7 @@ where
     async fn send_and_subscribe_transaction(
         &self,
         to: Address,
-        data: Vec<u8>,
+        calldata: Vec<u8>,
     ) -> Result<FixedBytes<32>> {
         let (from, atomic_nonce) = self.wallet.next_signer();
         let nonce = atomic_nonce.fetch_add(1, Ordering::SeqCst);
@@ -89,40 +90,32 @@ where
         const MAX_FEE_PER_GAS: u128 = 20_000_000_000;
         const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;
         const GAS_LIMIT: u64 = 21_000;
-        let _request = TransactionRequest::default()
+        let request = TransactionRequest::default()
             .with_to(to)
-            .with_input(data)
+            .with_input(calldata)
             .with_nonce(nonce)
             .with_chain_id(self.chain_id)
             .with_gas_limit(GAS_LIMIT)
             .with_max_priority_fee_per_gas(MAX_PRIORITY_FEE_PER_GAS)
             .with_max_fee_per_gas(MAX_FEE_PER_GAS);
 
-        // let alloy_signed_tx = NetworkWallet::<Ethereum>
-        //     ::sign_request(self.wallet.get_wallet(), request).await
-        //     .map_err(|e| {
-        //         atomic_nonce.fetch_sub(1, Ordering::SeqCst);
-        //         eyre::eyre!("Failed to sign transaction: {:?}", e)
-        //     })?;
+        let tx_envelope = NetworkWallet::<Ethereum>::sign_request(self.wallet.wallet(), request)
+            .await
+            .map_err(|e| {
+                atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+                eyre::eyre!("Failed to sign transaction: {:?}", e)
+            })?;
 
-        // let reth_signed_tx: TransactionSigned = alloy_signed_tx.try_into().map_err(|e| {
-        //     atomic_nonce.fetch_sub(1, Ordering::SeqCst);
-        //     eyre::eyre!("Failed to convert Alloy tx to Reth tx: {:?}", e)
-        // })?;
-
-        // let recovered_tx = Recovered::new_unchecked(reth_signed_tx, from);
-
-        // let pool_transaction = <FC::Pool as TransactionPool>::Transaction
-        //     ::try_from_consensus(recovered_tx)
-        //     .map_err(|e| {
-        //         atomic_nonce.fetch_sub(1, Ordering::SeqCst);
-        //         eyre::eyre!("Failed to convert to pool transaction: {:?}", e)
-        //     })?;
+        let reth_signed_tx: TransactionSigned = tx_envelope.into();
+        let recovered_tx = Recovered::new_unchecked(reth_signed_tx, from);
+        let len = recovered_tx.encode_2718_len();
+        // eth pool transaction
+        let eth_pooled_tx = EthPooledTransaction::new(recovered_tx, len);
 
         let mut tx_events = self
             .fnc
             .pool()
-            .add_transaction_and_subscribe(TransactionOrigin::Local, todo!())
+            .add_transaction_and_subscribe(TransactionOrigin::Local, eth_pooled_tx)
             .await
             .map_err(|e| {
                 atomic_nonce.fetch_sub(1, Ordering::SeqCst);
@@ -169,7 +162,6 @@ where
                     );
                 }
                 other => {
-                    // 실패한 경우 nonce 롤백
                     atomic_nonce.fetch_sub(1, Ordering::SeqCst);
                     tracing::error!(
                         event = "transaction_failed",
@@ -204,7 +196,7 @@ where
             let this = self.clone();
             tokio::spawn(async move {
                 if let Ok(hash) =
-                    this.send_and_subscribe_transaction(message.to, message.data).await
+                    this.send_and_subscribe_transaction(message.to, message.calldata).await
                 {
                     tracing::info!(
                         event = "transaction_sent",

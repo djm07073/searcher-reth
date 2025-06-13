@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use alloy_network::EthereumWallet;
-use alloy_primitives::{Address, map::foldhash::HashMap};
+use alloy_primitives::Address;
 
 pub struct RelayerWallet {
     wallet: EthereumWallet,
@@ -27,5 +27,9 @@ impl RelayerWallet {
         let idx = self.idx.fetch_add(1, Ordering::AcqRel);
         let (address, atomic_nonce) = self.signers[idx % self.signers.len()].clone();
         (address, atomic_nonce)
+    }
+
+    pub fn wallet(&self) -> &EthereumWallet {
+        &self.wallet
     }
 }

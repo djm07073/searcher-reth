@@ -1,5 +1,5 @@
-mod relayer_pool;
+mod pool;
 mod signals;
 mod wallet;
 
-pub use relayer_pool::{RelayerMessage, RelayerPool};
+pub use pool::{RelayerMessage, RelayerPool};

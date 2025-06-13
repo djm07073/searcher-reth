@@ -33,7 +33,7 @@ use crate::strategy::path_finding::types::getProfitCall;
 
 pub use types::RoutePath;
 
-use super::strategy::Strategy;
+use super::core::Strategy;
 
 type PathFinderCtx<'a, DB> = Context<
     BlockEnv,
@@ -114,7 +114,7 @@ where
             if let Some(to) = tx.to() {
                 let mut evm = pevm.lock().unwrap();
                 let data = tx.input().clone();
-                let result = evm.transact_system_call(data.into(), to).unwrap();
+                let result = evm.transact_system_call(data, to).unwrap();
 
                 if has_dirty_state(&result.state, &dirty_states) {
                     dirty_states.push(result.state);
@@ -190,7 +190,7 @@ where
 
 // Updated evm state of result has already been applied to the dirty state
 // filter out the paths that do not yield profit
-fn has_dirty_state(result_state: &EvmState, dirty_states: &Vec<EvmState>) -> bool {
+fn has_dirty_state(result_state: &EvmState, dirty_states: &[EvmState]) -> bool {
     if dirty_states.is_empty() {
         return false;
     }

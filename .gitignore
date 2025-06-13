@@ -4,5 +4,5 @@ debug/
 target/
 env.toml
 deployments/data/*
-data/*
+data/
 seed-data-*

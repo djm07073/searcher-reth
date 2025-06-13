@@ -11,15 +11,15 @@ use reth_provider::{
     BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
 };
 use reth_tracing::tracing;
-use reth_transaction_pool::TransactionPool;
+use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
 use tokio::sync::RwLock;
 
 use crate::{
     SearcherExtension,
     relayer_pool::{RelayerMessage, RelayerPool},
     strategy::{
+        core::Strategy,
         path_finding::{PathFinder, types::executeCall},
-        strategy::Strategy,
     },
 };
 
@@ -34,6 +34,7 @@ impl SearcherExEx {
     ) -> Result<impl Future<Output = Result<()>>>
     where
         Node: FullNodeComponents,
+        Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
         <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
             BlockHashReader + StateCommitmentProvider,
     {
@@ -66,7 +67,7 @@ impl SearcherExEx {
                         .database_provider_ro()?;
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
-                    // create a task to simulate contract execution in searcher executor parallel
+                    // Get the pending transactions from the transaction pool
                     let pending_txs = ctx
                         .components
                         .pool()
@@ -75,6 +76,8 @@ impl SearcherExEx {
                         .map(|tx| tx.transaction.clone())
                         .collect();
 
+                    // Filter candidates by path finder based on the latest state and pending
+                    // transactions
                     let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
                     let filtered_candidates = finder.filter_candidates(
                         extension.vault,
@@ -84,30 +87,34 @@ impl SearcherExEx {
                         extension.min_profit_ratio,
                     )?;
 
-                    let channel = relayer_tx.clone();
+                    // Send the filtered candidates to the relayer pool for broadcasting
+                    // transactions
+                    let relayer_channel = relayer_tx.clone();
                     tokio::spawn(async move {
-                        let routes = filtered_candidates
-                            .iter()
-                            .map(|route| format!("{:?}", route))
-                            .collect::<Vec<String>>()
-                            .join(", ");
-                        let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
-                        let result = channel
-                            .send(RelayerMessage { to: vault_address, data: calldata })
-                            .await;
-                        if let Err(e) = result {
+                        let calldata =
+                            (executeCall { routes: filtered_candidates.clone() }).abi_encode();
+                        let message = RelayerMessage { to: vault_address, calldata };
+                        relayer_channel.send(message).await.unwrap_or_else(|e| {
                             tracing::error!(
                                 target: "reth-exex",
-                                action = "send_calldata_to_relayer_pool",
+                                action = "send_candidates_to_relayer_pool",
                                 error = ?e,
                                 "Failed to send calldata to relayer pool"
                             );
-                            return;
-                        }
+                        });
+
+                        // Log the routes being sent
+                        let routes = filtered_candidates
+                            .clone()
+                            .iter()
+                            .map(|route| format!("{:?}", route))
+                            .collect::<Vec<String>>();
+                        let route_len = routes.len();
                         tracing::info!(
                             target: "reth-exex",
-                            action = "send_calldata_to_relayer_pool",
-                            routes = routes,
+                            action = "send_candidates_to_relayer_pool",
+                            route_len = route_len,
+                            routes = routes.join(", "),
                             "Sending encoded calldata to socket"
                         );
                     });
