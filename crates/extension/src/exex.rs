@@ -1,26 +1,26 @@
-use std::{ future::Future, sync::Arc };
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
+use alloy_sol_types::SolCall;
 use eyre::Result;
 use futures_util::StreamExt;
-use alloy_sol_types::SolCall;
+use std::{future::Future, sync::Arc};
 
-use reth_transaction_pool::TransactionPool;
-use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
-use reth_node_api::{ FullNodeComponents, FullNodeTypes };
+use reth_exex::{ExExContext, ExExEvent, ExExNotification};
+use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
-    BlockHashReader,
-    DatabaseProviderFactory,
-    LatestStateProviderRef,
-    StateCommitmentProvider,
+    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
 };
-use tokio::sync::RwLock;
 use reth_tracing::tracing;
+use reth_transaction_pool::TransactionPool;
+use tokio::sync::RwLock;
 
 use crate::{
-    relayer_pool::{ RelayerMessage, RelayerPool },
-    strategy::{ path_finding::{ types::executeCall, PathFinder }, strategy::Strategy },
     SearcherExtension,
+    relayer_pool::{RelayerMessage, RelayerPool},
+    strategy::{
+        path_finding::{PathFinder, types::executeCall},
+        strategy::Strategy,
+    },
 };
 
 pub struct SearcherExEx;
@@ -30,13 +30,12 @@ impl SearcherExEx {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
         extension: Arc<RwLock<SearcherExtension>>,
-        wallet: (EthereumWallet, Vec<Address>)
-    )
-        -> Result<impl Future<Output = Result<()>>>
-        where
-            Node: FullNodeComponents,
-            <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider: BlockHashReader +
-                StateCommitmentProvider
+        wallet: (EthereumWallet, Vec<Address>),
+    ) -> Result<impl Future<Output = Result<()>>>
+    where
+        Node: FullNodeComponents,
+        <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
+            BlockHashReader + StateCommitmentProvider,
     {
         Ok(async move {
             let extension = extension.read().await;
@@ -68,7 +67,8 @@ impl SearcherExEx {
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
                     // create a task to simulate contract execution in searcher executor parallel
-                    let pending_txs = ctx.components
+                    let pending_txs = ctx
+                        .components
                         .pool()
                         .pending_transactions()
                         .iter()
@@ -81,7 +81,7 @@ impl SearcherExEx {
                         pending_txs,
                         candidates.clone(),
                         extension.max_profit_ratio,
-                        extension.min_profit_ratio
+                        extension.min_profit_ratio,
                     )?;
 
                     let channel = relayer_tx.clone();
@@ -92,10 +92,9 @@ impl SearcherExEx {
                             .collect::<Vec<String>>()
                             .join(", ");
                         let calldata = (executeCall { routes: filtered_candidates }).abi_encode();
-                        let result = channel.send(RelayerMessage {
-                            to: vault_address,
-                            data: calldata,
-                        }).await;
+                        let result = channel
+                            .send(RelayerMessage { to: vault_address, data: calldata })
+                            .await;
                         if let Err(e) = result {
                             tracing::error!(
                                 target: "reth-exex",

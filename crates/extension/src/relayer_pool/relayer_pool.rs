@@ -1,31 +1,34 @@
-use std::sync::{ Arc, atomic::{ AtomicU8, AtomicU64, AtomicUsize, Ordering } };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
+};
 
-use alloy_network::{ Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder };
-use alloy_primitives::{ map::foldhash::HashMap, Address, ChainId, FixedBytes };
+use alloy_network::{Ethereum, EthereumWallet, TransactionBuilder};
+use alloy_primitives::{Address, ChainId, FixedBytes, map::foldhash::HashMap};
 use eyre::Result;
 use futures_util::StreamExt;
 use reth::{
     api::FullNodeComponents,
     network::NetworkInfo,
     rpc::types::TransactionRequest,
-    transaction_pool::{ TransactionEvent, TransactionOrigin, TransactionPool },
+    transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
 };
-use reth_primitives::{ TransactionSigned, Recovered };
+use reth_primitives::{Recovered, TransactionSigned};
 use reth_provider::AccountReader;
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
+
+use tokio::sync::mpsc::{self, Receiver, Sender};
+
+use crate::relayer_pool::signals::{Status, handle_signals};
+
+use super::wallet::RelayerWallet;
+
 pub struct RelayerPool<FC: FullNodeComponents> {
     fnc: FC,
-    wallet: EthereumWallet,
-    idx: AtomicUsize,
-    addresses: Vec<Address>,
-    nonce_map: HashMap<Address, Arc<AtomicU64>>,
+    wallet: RelayerWallet,
     chain_id: ChainId,
 }
-
-use tokio::sync::mpsc::{ self, Receiver, Sender };
-
-use crate::relayer_pool::signals::{ Status, handle_signals };
 
 #[derive(Debug)]
 pub struct RelayerMessage {
@@ -34,29 +37,17 @@ pub struct RelayerMessage {
 }
 
 impl<FC> RelayerPool<FC>
-    where FC: FullNodeComponents, <FC::Pool as TransactionPool>::Transaction: PoolTransaction
+where
+    FC: FullNodeComponents,
+    <FC::Pool as TransactionPool>::Transaction: PoolTransaction,
 {
     pub async fn new(fnc: FC, wallet: (EthereumWallet, Vec<Address>)) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
-        let nonce_map = wallet.1
-            .clone()
-            .into_iter()
-            .map(|address| {
-                let fnc = fnc.clone();
-                let account = fnc.provider().basic_account(&address).unwrap().unwrap();
-                let nonce = account.nonce;
-                (address, Arc::new(AtomicU64::new(nonce)))
-            })
-            .collect();
-
-        Ok(Self {
-            fnc,
-            chain_id,
-            wallet: wallet.0,
-            idx: AtomicUsize::new(0),
-            nonce_map,
-            addresses: wallet.1,
-        })
+        let wallet = RelayerWallet::new(wallet, |address| {
+            let account = fnc.provider().basic_account(&address).unwrap_or_default();
+            Arc::new(AtomicU64::new(account.unwrap_or_default().nonce))
+        });
+        Ok(Self { fnc, chain_id, wallet })
     }
 
     pub async fn start(self: Arc<Self>) -> Result<Sender<RelayerMessage>> {
@@ -71,91 +62,75 @@ impl<FC> RelayerPool<FC>
             }
         });
         // Spawn message handling task
-        let relayer_pool = self.clone();
+        let this = self.clone();
         tokio::spawn(async move {
-            relayer_pool.handle_messages(rx, status_for_messages).await;
+            this.handle_relayer_messages(rx, status_for_messages).await;
         });
 
         Ok(tx)
     }
 
-    async fn send_transaction(&self, to: Address, data: Vec<u8>) -> Result<FixedBytes<32>> {
-        let current_idx = self.idx.fetch_add(1, Ordering::SeqCst) % self.addresses.len();
-        let from = self.addresses[current_idx];
-        let nonce_atomic = self.nonce_map
-            .get(&from)
-            .ok_or_else(|| eyre::eyre!("Address not found in nonce map: {:?}", from))?;
-        let nonce = nonce_atomic.load(Ordering::SeqCst);
+    async fn send_and_subscribe_transaction(
+        &self,
+        to: Address,
+        data: Vec<u8>,
+    ) -> Result<FixedBytes<32>> {
+        let (from, atomic_nonce) = self.wallet.next_signer();
+        let nonce = atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
-        // 1. Set access list to reduce gas fees
-        // TODO: set access list if needed
-        // 2. EIP-1559 config : max_fee_per_gas, max_priority_fee_per_gas
-        let max_fee_per_gas = 20_000_000_000;
-        let max_priority_fee_per_gas = 1_000_000_000;
-        let gas_limit = 21_000;
         tracing::info!(
             event = "transaction_send",
-            idx = current_idx,
             nonce = nonce,
             to = ?to,
             from = ?from,
-            "Sending transaction"
+            "Sending and subscribing to transaction"
         );
 
-        // let mut request = TransactionRequest::default()
-        //     .with_to(to)
-        //     .with_input(data)
-        //     .with_nonce(nonce)
-        //     .with_chain_id(self.chain_id)
-        //     .with_gas_limit(gas_limit)
-        //     .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
-        //     .with_max_fee_per_gas(max_fee_per_gas);
-
-        // let transaction = NetworkWallet::<Ethereum>
-        //     ::sign_request(&self.wallet, request.clone()).await
-        //     .map_err(|e| eyre::eyre!("Failed to sign transaction: {:?}", e))?
-        //     .with_signer(from);
-
-        // let pool_transaction = EthPooledTransaction::new(
-        //     transaction.clone(),
-        //     transaction.eip2718_encoded_length()
-        // );
-
-        // let mut tx_events = self.fnc
-        //     .pool()
-        //     .add_transaction_and_subscribe(TransactionOrigin::Local, pool_transaction).await?;
-
-        let request = TransactionRequest::default()
+        const MAX_FEE_PER_GAS: u128 = 20_000_000_000;
+        const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;
+        const GAS_LIMIT: u64 = 21_000;
+        let _request = TransactionRequest::default()
             .with_to(to)
             .with_input(data)
             .with_nonce(nonce)
             .with_chain_id(self.chain_id)
-            .with_gas_limit(gas_limit)
-            .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
-            .with_max_fee_per_gas(max_fee_per_gas);
+            .with_gas_limit(GAS_LIMIT)
+            .with_max_priority_fee_per_gas(MAX_PRIORITY_FEE_PER_GAS)
+            .with_max_fee_per_gas(MAX_FEE_PER_GAS);
 
         // let alloy_signed_tx = NetworkWallet::<Ethereum>
-        //     ::sign_request(&self.wallet, request.clone()).await
-        //     .map_err(|e| eyre::eyre!("Failed to sign transaction: {:?}", e))?;
+        //     ::sign_request(self.wallet.get_wallet(), request).await
+        //     .map_err(|e| {
+        //         atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+        //         eyre::eyre!("Failed to sign transaction: {:?}", e)
+        //     })?;
 
-        // let reth_signed_tx: TransactionSigned = alloy_signed_tx
-        //     .try_into()
-        //     .map_err(|e| eyre::eyre!("Failed to convert Alloy tx to Reth tx: {:?}", e))?;
+        // let reth_signed_tx: TransactionSigned = alloy_signed_tx.try_into().map_err(|e| {
+        //     atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+        //     eyre::eyre!("Failed to convert Alloy tx to Reth tx: {:?}", e)
+        // })?;
 
         // let recovered_tx = Recovered::new_unchecked(reth_signed_tx, from);
 
         // let pool_transaction = <FC::Pool as TransactionPool>::Transaction
-        //     ::try_from_consensus(todo!("Implement consensus logic"))
-        //     .map_err(|e| eyre::eyre!("Failed to convert to pool transaction: {:?}", e))?;
+        //     ::try_from_consensus(recovered_tx)
+        //     .map_err(|e| {
+        //         atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+        //         eyre::eyre!("Failed to convert to pool transaction: {:?}", e)
+        //     })?;
 
-        let mut tx_events = self.fnc
+        let mut tx_events = self
+            .fnc
             .pool()
-            .add_transaction_and_subscribe(
-                TransactionOrigin::Local,
-                todo!("Implement consensus logic")
-            ).await?;
+            .add_transaction_and_subscribe(TransactionOrigin::Local, todo!())
+            .await
+            .map_err(|e| {
+                atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+                eyre::eyre!("Failed to add transaction to pool: {:?}", e)
+            })?;
 
         let tx_hash = tx_events.hash();
+
         while let Some(event) = tx_events.next().await {
             match event {
                 TransactionEvent::Mined(block_hash) => {
@@ -164,13 +139,13 @@ impl<FC> RelayerPool<FC>
                         block_hash = ?block_hash,
                         relayer = ?from,
                         nonce = nonce,
-                        "Transaction mined successfully"
+                        tx_hash = ?tx_hash,
+                        "Transaction successfully mined"
                     );
-                    nonce_atomic.fetch_add(1, Ordering::SeqCst);
                     return Ok(tx_hash);
                 }
                 TransactionEvent::Propagated(kind) => {
-                    tracing::info!(
+                    tracing::debug!(
                         event = "transaction_propagated",
                         relayer = ?from,
                         nonce = nonce,
@@ -178,27 +153,45 @@ impl<FC> RelayerPool<FC>
                         "Transaction propagated to peers"
                     );
                 }
-                TransactionEvent::Invalid => {
-                    return Err(eyre::eyre!("Transaction became invalid"));
-                }
-                TransactionEvent::Discarded => {
-                    return Err(eyre::eyre!("Transaction was discarded"));
-                }
-                // Log other events but continue waiting
-                other_event => {
+                TransactionEvent::Pending => {
                     tracing::debug!(
-                        event = ?other_event,
+                        event = "transaction_pending",
+                        nonce = nonce,
+                        "Transaction is pending in mempool"
+                    );
+                }
+                TransactionEvent::Queued => {
+                    tracing::warn!(
+                        event = "transaction_queued",
                         relayer = ?from,
                         nonce = nonce,
-                        "Received transaction event"
+                        "Transaction is queued (low gas price?)"
                     );
+                }
+                other => {
+                    // 실패한 경우 nonce 롤백
+                    atomic_nonce.fetch_sub(1, Ordering::SeqCst);
+                    tracing::error!(
+                        event = "transaction_failed",
+                        relayer = ?from,
+                        nonce = nonce,
+                        error = ?other,
+                        "Transaction encountered an error - rolling back nonce"
+                    );
+                    return Err(eyre::eyre!("Transaction became invalid: {:?}", other));
                 }
             }
         }
+
+        atomic_nonce.fetch_sub(1, Ordering::SeqCst);
         Err(eyre::eyre!("Transaction event stream ended without mining confirmation"))
     }
 
-    async fn handle_messages(&self, mut rx: Receiver<RelayerMessage>, status: Arc<AtomicU8>) {
+    async fn handle_relayer_messages(
+        self: Arc<Self>,
+        mut rx: Receiver<RelayerMessage>,
+        status: Arc<AtomicU8>,
+    ) {
         while let Some(message) = rx.recv().await {
             if status.load(Ordering::SeqCst) == (Status::Stopped as u8) {
                 tracing::info!(
@@ -208,22 +201,18 @@ impl<FC> RelayerPool<FC>
                 break;
             }
 
-            match self.send_transaction(message.to, message.data).await {
-                Ok(hash) => {
+            let this = self.clone();
+            tokio::spawn(async move {
+                if let Ok(hash) =
+                    this.send_and_subscribe_transaction(message.to, message.data).await
+                {
                     tracing::info!(
                         event = "transaction_sent",
                         tx_hash = ?hash,
                         "Transaction sent successfully"
                     );
                 }
-                Err(e) => {
-                    tracing::error!(
-                        event = "transaction_failed",
-                        error = %e,
-                        "Failed to send transaction"
-                    );
-                }
-            }
+            });
         }
         tracing::info!(event = "shutdown", "Message handler stopped");
     }

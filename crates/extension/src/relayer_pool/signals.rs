@@ -1,6 +1,9 @@
 use reth_tracing::tracing;
-use std::sync::{ Arc, atomic::{ AtomicU8, Ordering } };
-use tokio::signal::unix::{ SignalKind, signal };
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
+use tokio::signal::unix::{SignalKind, signal};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Status {
