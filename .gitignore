@@ -6,3 +6,4 @@ env.toml
 deployments/data/*
 data/
 seed-data-*
+logs/

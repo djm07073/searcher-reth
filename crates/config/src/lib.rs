@@ -1,9 +1,9 @@
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
-use alloy_signer_local::{coins_bip39::English, MnemonicBuilder};
+use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
 
 use eyre::Result;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub struct SearcherConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct TxRelayerConfig {
-    pub vault_address: String,
+    pub vault: String,
     pub mnemonic: String,
 }
 
@@ -26,7 +26,8 @@ impl TxRelayerConfig {
         let mut wallet = EthereumWallet::default();
         let mut addresses = Vec::new();
         for i in 0..10 {
-            let signer = MnemonicBuilder::<English>::default()
+            let signer = MnemonicBuilder::<English>
+                ::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;
