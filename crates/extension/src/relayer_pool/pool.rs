@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicU8, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 
 use alloy_eips::Encodable2718;
@@ -19,9 +19,11 @@ use reth_provider::AccountReader;
 use reth_tracing::tracing;
 use reth_transaction_pool::EthPooledTransaction;
 
-use tokio::sync::mpsc::{self, Receiver, Sender};
-
-use crate::relayer_pool::signals::{Status, handle_signals};
+use searcher_reth_util::SignalType;
+use tokio::sync::{
+    broadcast,
+    mpsc::{self, Receiver, Sender},
+};
 
 use super::wallet::RelayerWallet;
 
@@ -29,6 +31,7 @@ pub struct RelayerPool<FC: FullNodeComponents> {
     fnc: FC,
     wallet: RelayerWallet,
     chain_id: ChainId,
+    signal_rx: broadcast::Receiver<SignalType>,
 }
 
 #[derive(Debug)]
@@ -42,32 +45,28 @@ where
     FC: FullNodeComponents,
     FC::Pool: TransactionPool<Transaction = EthPooledTransaction>,
 {
-    pub async fn new(fnc: FC, wallet: (EthereumWallet, Vec<Address>)) -> Result<Self> {
+    pub async fn new(
+        fnc: FC,
+        wallet: (EthereumWallet, Vec<Address>),
+        signal_rx: broadcast::Receiver<SignalType>,
+    ) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
         let wallet = RelayerWallet::new(wallet, |address| {
             let account = fnc.provider().basic_account(&address).unwrap_or_default();
             Arc::new(AtomicU64::new(account.unwrap_or_default().nonce))
         });
-        Ok(Self { fnc, chain_id, wallet })
+        Ok(Self { fnc, chain_id, wallet, signal_rx })
     }
 
     pub async fn start(self: Arc<Self>) -> Result<Sender<RelayerMessage>> {
         let (tx, rx) = mpsc::channel::<RelayerMessage>(100);
-        let status = Arc::new(AtomicU8::new(Status::Running as u8));
-        let status_for_signals = status.clone();
-        let status_for_messages = status.clone();
-        // Spawn signal handler
-        tokio::spawn(async move {
-            if let Err(e) = handle_signals(status_for_signals).await {
-                tracing::error!("Signal handler failed: {}", e);
-            }
-        });
+
         // Spawn message handling task
         let this = self.clone();
+        let signal_rx = self.signal_rx.resubscribe();
         tokio::spawn(async move {
-            this.handle_relayer_messages(rx, status_for_messages).await;
+            this.handle_relayer_messages(rx, signal_rx).await;
         });
-
         Ok(tx)
     }
 
@@ -182,10 +181,33 @@ where
     async fn handle_relayer_messages(
         self: Arc<Self>,
         mut rx: Receiver<RelayerMessage>,
-        status: Arc<AtomicU8>,
+        mut signal_rx: broadcast::Receiver<SignalType>,
     ) {
+        let mut is_paused = true;
+        tokio::select! {
+            signal = signal_rx.recv() => {
+                match signal {
+                    Ok(SignalType::Pause) => {
+                        is_paused = true;
+                        tracing::info!(event = "status_change", status = "paused", "Relayer paused");
+                    }
+                    Ok(SignalType::Resume) => {
+                        is_paused = false;
+                        tracing::info!(event = "status_change", status = "running", "Relayer resumed");
+                    }
+                    Ok(SignalType::Shutdown) => {
+                        tracing::info!(event = "shutdown", "Relayer received shutdown signal");
+                        return;
+                    }
+                    Err(_) => {
+                        tracing::warn!(event = "signal_error", "Signal channel closed");
+                    }
+                }
+            }
+        }
+
         while let Some(message) = rx.recv().await {
-            if status.load(Ordering::SeqCst) == (Status::Stopped as u8) {
+            if is_paused {
                 tracing::info!(
                     event = "shutdown",
                     "Stopping message processing due to shutdown signal"

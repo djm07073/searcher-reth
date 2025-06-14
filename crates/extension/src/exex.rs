@@ -3,6 +3,7 @@ use alloy_primitives::Address;
 use alloy_sol_types::SolCall;
 use eyre::Result;
 use futures_util::StreamExt;
+use searcher_reth_util::signal_manager::SignalType;
 use std::{future::Future, sync::Arc};
 
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
@@ -12,7 +13,7 @@ use reth_provider::{
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 
 use crate::{
     SearcherExtension,
@@ -31,6 +32,7 @@ impl SearcherExEx {
         mut ctx: ExExContext<Node>,
         extension: Arc<RwLock<SearcherExtension>>,
         wallet: (EthereumWallet, Vec<Address>),
+        signal_rx: broadcast::Receiver<SignalType>,
     ) -> Result<impl Future<Output = Result<()>>>
     where
         Node: FullNodeComponents,
@@ -44,7 +46,8 @@ impl SearcherExEx {
             let bytecode = extension.contract.clone();
             let candidates = extension.candidates.clone();
 
-            let relayer_pool = Arc::new(RelayerPool::new(ctx.components.clone(), wallet).await?);
+            let relayer_pool =
+                Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
             let relayer_tx = Arc::new(relayer_pool.start().await?);
             tracing::info!(
                 target: "reth-exex",

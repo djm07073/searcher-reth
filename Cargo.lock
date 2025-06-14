@@ -9078,9 +9078,9 @@ dependencies = [
  "rusqlite",
  "searcher-reth-config",
  "searcher-reth-extension",
- "searcher-reth-logger",
  "searcher-reth-repository",
  "searcher-reth-rpc",
+ "searcher-reth-util",
  "secp256k1",
  "serde_json",
  "tokio",
@@ -9137,17 +9137,11 @@ dependencies = [
  "revm",
  "rusqlite",
  "searcher-reth-repository",
+ "searcher-reth-util",
  "secp256k1",
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "searcher-reth-logger"
-version = "0.0.0"
-dependencies = [
- "reth-tracing",
 ]
 
 [[package]]
@@ -9173,6 +9167,15 @@ dependencies = [
  "searcher-reth-repository",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "searcher-reth-util"
+version = "0.0.0"
+dependencies = [
+ "eyre",
+ "reth-tracing",
  "tokio",
 ]
 

@@ -1,5 +1,5 @@
 [package]
-name = "searcher-reth-logger"
+name = "searcher-reth-util"
 version = "0.0.0"
 publish = false
 edition.workspace = true
@@ -7,3 +7,5 @@ license.workspace = true
 
 [dependencies]
 reth-tracing.workspace = true
+tokio.workspace = true
+eyre.workspace = true
