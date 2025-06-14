@@ -20,21 +20,22 @@ fn main() -> eyre::Result<()> {
     let wallet = config.relayer.get_wallet().unwrap();
     let repository = Arc::new(SearcherRepository::new(config.database.path.to_str().unwrap()));
 
-    let signal_manager = SignalManager::new();
-    let spawned_signal_manager = signal_manager.clone();
-    tokio::spawn(async move {
-        if let Err(e) = spawned_signal_manager.start_signal_handling().await {
-            error!("Signal handler failed: {}", e);
-        }
-    });
-
     reth::cli::Cli::<EthereumChainSpecParser, SetupArgs>::parse().run(|builder, args| async move {
+        // Spawn signal manager to handle OS signals
+        let signal_manager = SignalManager::new();
+        let spawned_signal_manager = signal_manager.clone();
+        tokio::spawn(async move {
+            if let Err(e) = spawned_signal_manager.clone().start_signal_handling().await {
+                error!("Signal handler failed: {}", e);
+            }
+            std::process::exit(0);
+        });
+        // Initialize the extension
         let chain_id = builder.config().chain.chain.id();
         let extension = Arc::new(RwLock::new(SearcherExtension::new(vault, args).unwrap()));
         let extension_for_rpc = extension.clone();
         let extension_for_exex = extension.clone();
 
-        let exex_signal_rx = signal_manager.subscribe();
         let handle = builder
             .node(EthereumNode::default())
             .extend_rpc_modules(move |ctx| {
@@ -60,7 +61,8 @@ fn main() -> eyre::Result<()> {
                 Ok(())
             })
             .install_exex("SearcherExEx", move |ctx| {
-                let exex = SearcherExEx::exex(ctx, extension_for_exex, wallet, exex_signal_rx);
+                let exex =
+                    SearcherExEx::exex(ctx, extension_for_exex, wallet, signal_manager.subscribe());
                 info!(
                     target: "reth-exex",
                     event = "exex_installation",
