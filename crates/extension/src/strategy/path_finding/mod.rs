@@ -17,7 +17,6 @@ use reth_revm::{
 use reth_transaction_pool::PoolTransaction;
 use revm::{
     context::result::{ExecutionResult, Output},
-    primitives::HashSet,
     state::EvmState,
 };
 use std::{
@@ -92,7 +91,7 @@ where
         }
     }
 
-    fn filter_candidates<T: PoolTransaction>(
+    fn find_profitable_candidates<T: PoolTransaction>(
         &mut self,
         vault: Address,
         pending_txs: Vec<T>,
@@ -109,103 +108,80 @@ where
         }
         // 1. Get dirty states from pending transactions
         let pevm = Arc::new(Mutex::new(&mut self.evm));
-        let mut dirty_states: Vec<EvmState> = Vec::new();
-        for tx in pending_txs.iter() {
-            if let Some(to) = tx.to() {
-                let mut evm = pevm.lock().unwrap();
-                let data = tx.input().clone();
-                let result = evm.transact_system_call(data, to).unwrap();
-
-                if has_dirty_state(&result.state, &dirty_states) {
-                    dirty_states.push(result.state);
+        let dirty_states: Vec<EvmState> = pending_txs
+            .par_iter()
+            .filter_map(|tx| {
+                if let Some(to) = tx.to() {
+                    let mut evm = pevm.lock().unwrap();
+                    let data = tx.input().clone();
+                    let result = evm.transact_system_call(data, to).unwrap();
+                    Some(result.state)
+                } else {
+                    None
                 }
-            }
-        }
+            })
+            .collect();
 
         // 2. Filter candidates based on vault balances and profit ratios
-        let mut filtered_candidates = Vec::<RoutePath>::new();
-        for candidate_map in candidates {
-            let filtered_paths = Arc::new(Mutex::new(Vec::new()));
-            let found_max_profit = Arc::new(AtomicBool::new(false));
-
-            candidate_map.par_iter().for_each(|(initial_token, paths)| {
-                let balance = balances[initial_token];
-                if balance.is_zero() {
-                    return;
-                }
-
-                paths.par_iter().for_each(|path| {
-                    if found_max_profit.load(Ordering::Relaxed) {
-                        return;
+        let found_max_profit = Arc::new(AtomicBool::new(false));
+        let profitable_candidates: Vec<RoutePath> = candidates
+            .par_iter()
+            .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
+            .flat_map(|candidate| {
+                candidate.par_iter().filter_map(|(initial_token, paths)| {
+                    let balance = balances[initial_token];
+                    if balance.is_zero() {
+                        return None;
                     }
 
-                    let encoded_data =
-                        (getProfitCall { initialAmt: balance, route: path.clone() }).abi_encode();
-
-                    let result = {
-                        let mut evm = pevm.lock().unwrap();
-                        let result = evm
-                            .transact_system_call(encoded_data.into(), STRATEGY_CONTRACT_ADDRESS)
-                            .unwrap();
-
-                        if has_dirty_state(&result.state, &dirty_states) {
-                            return;
-                        }
-                        result
-                    };
-
-                    let net_profit = match result.result {
-                        ExecutionResult::Success { output: Output::Call(value), .. } => {
-                            <U256>::abi_decode(&value).unwrap()
+                    paths.par_iter().find_map_first(|path| {
+                        if found_max_profit.load(Ordering::Relaxed) {
+                            return None;
                         }
 
-                        _ => {
-                            return;
+                        let encoded_data =
+                            (getProfitCall { initialAmt: balance, route: path.clone() })
+                                .abi_encode();
+
+                        let result = {
+                            let mut evm = pevm.lock().unwrap();
+                            let result = evm
+                                .transact_system_call(
+                                    encoded_data.into(),
+                                    STRATEGY_CONTRACT_ADDRESS,
+                                )
+                                .unwrap();
+
+                            if Self::has_dirty_state(&result.state, &dirty_states) {
+                                return None;
+                            }
+                            result
+                        };
+
+                        let net_profit = match result.result {
+                            ExecutionResult::Success { output: Output::Call(value), .. } => {
+                                <U256>::abi_decode(&value).unwrap()
+                            }
+                            _ => {
+                                return None;
+                            }
+                        };
+
+                        let net_profit_ratio = net_profit.checked_div(balance).unwrap();
+
+                        if net_profit_ratio.ge(&max_profit_ratio) {
+                            found_max_profit.store(true, Ordering::Relaxed);
+                            Some(path.clone())
+                        } else if net_profit_ratio.ge(&min_profit_ratio) {
+                            Some(path.clone())
+                        } else {
+                            None
                         }
-                    };
+                    })
+                })
+            })
+            .collect();
 
-                    let net_profit_ratio = net_profit.checked_div(balance).unwrap();
-                    let mut paths = filtered_paths.lock().unwrap();
-
-                    if net_profit_ratio.ge(&max_profit_ratio) {
-                        paths.push(path.clone());
-                        found_max_profit.store(true, Ordering::Relaxed);
-                    } else if net_profit_ratio.ge(&min_profit_ratio) {
-                        paths.push(path.clone());
-                    }
-                });
-            });
-
-            filtered_candidates
-                .extend(Arc::try_unwrap(filtered_paths).unwrap().into_inner().unwrap());
-
-            if Arc::try_unwrap(found_max_profit).unwrap().load(Ordering::Relaxed) {
-                break;
-            }
-        }
-
-        Ok(filtered_candidates)
+        Ok(profitable_candidates)
     }
-}
-
-// Updated evm state of result has already been applied to the dirty state
-// filter out the paths that do not yield profit
-fn has_dirty_state(result_state: &EvmState, dirty_states: &[EvmState]) -> bool {
-    if dirty_states.is_empty() {
-        return false;
-    }
-
-    let dirty_keys: HashSet<(Address, _)> = dirty_states
-        .iter()
-        .flat_map(|state| {
-            state
-                .iter()
-                .filter(|(_, account)| account.is_touched())
-                .flat_map(|(addr, account)| account.storage.keys().map(move |key| (*addr, *key)))
-        })
-        .collect();
-
-    result_state.iter().filter(|(_, account)| account.is_touched()).any(|(address, account)| {
-        account.storage.keys().any(|key| dirty_keys.contains(&(*address, *key)))
-    })
 }

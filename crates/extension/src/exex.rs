@@ -48,7 +48,7 @@ impl SearcherExEx {
 
             let relayer_pool =
                 Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
-            let relayer_tx = Arc::new(relayer_pool.start().await?);
+            let relayer_tx = relayer_pool.start().await?;
             tracing::info!(
                 target: "reth-exex",
                 action = "relayer_pool_start",
@@ -82,7 +82,7 @@ impl SearcherExEx {
                     // Filter candidates by path finder based on the latest state and pending
                     // transactions
                     let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
-                    let filtered_candidates = finder.filter_candidates(
+                    let filtered_candidates = finder.find_profitable_candidates(
                         extension.vault,
                         pending_txs,
                         candidates.clone(),

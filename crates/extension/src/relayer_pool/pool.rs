@@ -137,7 +137,7 @@ where
                     return Ok(tx_hash);
                 }
                 TransactionEvent::Propagated(kind) => {
-                    tracing::debug!(
+                    tracing::info!(
                         event = "transaction_propagated",
                         relayer = ?from,
                         nonce = nonce,
@@ -146,7 +146,7 @@ where
                     );
                 }
                 TransactionEvent::Pending => {
-                    tracing::debug!(
+                    tracing::info!(
                         event = "transaction_pending",
                         nonce = nonce,
                         "Transaction is pending in mempool"
