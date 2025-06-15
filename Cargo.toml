@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth","crates/extension", "crates/repository", "crates/rpc","crates/util", "crates/config"]
+members = ["bin/searcher-reth","crates/extension", "crates/repository","crates/util", "crates/config"]
 resolver = "2"
 [workspace.package]
 version = "0.1.0"
@@ -13,7 +13,6 @@ publish = false
 searcher-reth = { path = "bin/searcher-reth" }
 searcher-reth-extension = { path = "crates/extension" }
 searcher-reth-repository = { path = "crates/repository" }
-searcher-reth-rpc = { path = "crates/rpc" }
 searcher-reth-util = { path = "crates/util" }
 searcher-reth-config = { path = "crates/config" }
 

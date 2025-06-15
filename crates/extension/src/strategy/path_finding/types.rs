@@ -1,9 +1,6 @@
-use alloy_primitives::{Address, address};
+use alloy_primitives::Address;
 use alloy_sol_types::sol;
 use searcher_reth_repository::model::Hop as HopModel;
-
-pub(super) const STRATEGY_CONTRACT_ADDRESS: Address =
-    address!("0000000000000000000000000000000000012345");
 
 sol! {
     #[derive(Debug)]
@@ -22,7 +19,7 @@ sol! {
     ) external returns (uint256 profit);
 }
 
-pub type RoutePath = Vec<Hop>;
+// pub type RoutePath = Vec<Hop>;
 
 impl From<HopModel> for Hop {
     fn from(hop: HopModel) -> Self {

@@ -1,44 +1,52 @@
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
-use alloy_sol_types::SolCall;
 use eyre::Result;
 use futures_util::StreamExt;
 use searcher_reth_util::signal_manager::SignalType;
-use std::{future::Future, sync::Arc};
+use std::{ future::Future, sync::Arc };
 
-use reth_exex::{ExExContext, ExExEvent, ExExNotification};
-use reth_node_api::{FullNodeComponents, FullNodeTypes};
+use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
+use reth_node_api::{ FullNodeComponents, FullNodeTypes };
 use reth_provider::{
-    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
+    BlockHashReader,
+    DatabaseProviderFactory,
+    LatestStateProviderRef,
+    StateCommitmentProvider,
 };
 use reth_tracing::tracing;
-use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
-use tokio::sync::{RwLock, broadcast};
+use reth_transaction_pool::{ EthPooledTransaction, TransactionPool };
+use tokio::sync::{ RwLock, broadcast };
 
 use crate::{
-    SearcherExtension,
-    relayer_pool::{RelayerMessage, RelayerPool},
-    strategy::{
-        core::Strategy,
-        path_finding::{PathFinder, types::executeCall},
-    },
+    core::SearcherExtension,
+    relayer_pool::{ RelayerMessage, RelayerPool },
+    strategy::Strategy,
 };
 
-pub struct SearcherExEx;
+use std::marker::PhantomData;
+
+pub struct SearcherExEx<S> {
+    _marker: PhantomData<S>,
+}
 
 // impl of exex
-impl SearcherExEx {
+impl<S> SearcherExEx<S> {
     pub async fn exex<Node>(
         mut ctx: ExExContext<Node>,
-        extension: Arc<RwLock<SearcherExtension>>,
+        extension: Arc<RwLock<SearcherExtension<'static, S>>>,
         wallet: (EthereumWallet, Vec<Address>),
-        signal_rx: broadcast::Receiver<SignalType>,
-    ) -> Result<impl Future<Output = Result<()>>>
-    where
-        Node: FullNodeComponents,
-        Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
-        <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
-            BlockHashReader + StateCommitmentProvider,
+        signal_rx: broadcast::Receiver<SignalType>
+    )
+        -> Result<impl Future<Output = Result<()>>>
+        where
+            S: for<'a> Strategy<
+                'a,
+                DB = <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider
+            >,
+            Node: FullNodeComponents,
+            Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
+            <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider: BlockHashReader +
+                StateCommitmentProvider
     {
         Ok(async move {
             let extension = extension.read().await;
@@ -46,8 +54,9 @@ impl SearcherExEx {
             let bytecode = extension.contract.clone();
             let candidates = extension.candidates.clone();
 
-            let relayer_pool =
-                Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
+            let relayer_pool = Arc::new(
+                RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?
+            );
             let relayer_tx = relayer_pool.start().await?;
             tracing::info!(
                 target: "reth-exex",
@@ -71,8 +80,7 @@ impl SearcherExEx {
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
                     // Get the pending transactions from the transaction pool
-                    let pending_txs = ctx
-                        .components
+                    let pending_txs = ctx.components
                         .pool()
                         .pending_transactions()
                         .iter()
@@ -81,21 +89,19 @@ impl SearcherExEx {
 
                     // Filter candidates by path finder based on the latest state and pending
                     // transactions
-                    let mut finder = PathFinder::new(latest_state_provider, bytecode.clone());
-                    let filtered_candidates = finder.find_profitable_candidates(
+                    let mut strategy = S::create(latest_state_provider, bytecode.clone());
+                    let calldata = strategy.find_profitable_candidates(
                         extension.vault,
                         pending_txs,
                         candidates.clone(),
                         extension.max_profit_ratio,
-                        extension.min_profit_ratio,
+                        extension.min_profit_ratio
                     )?;
 
                     // Send the filtered candidates to the relayer pool for broadcasting
                     // transactions
                     let relayer_channel = relayer_tx.clone();
                     tokio::spawn(async move {
-                        let calldata =
-                            (executeCall { routes: filtered_candidates.clone() }).abi_encode();
                         let message = RelayerMessage { to: vault_address, calldata };
                         relayer_channel.send(message).await.unwrap_or_else(|e| {
                             tracing::error!(
@@ -105,21 +111,6 @@ impl SearcherExEx {
                                 "Failed to send calldata to relayer pool"
                             );
                         });
-
-                        // Log the routes being sent
-                        let routes = filtered_candidates
-                            .clone()
-                            .iter()
-                            .map(|route| format!("{:?}", route))
-                            .collect::<Vec<String>>();
-                        let route_len = routes.len();
-                        tracing::info!(
-                            target: "reth-exex",
-                            action = "send_candidates_to_relayer_pool",
-                            route_len = route_len,
-                            routes = routes.join(", "),
-                            "Sending encoded calldata to socket"
-                        );
                     });
 
                     ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;

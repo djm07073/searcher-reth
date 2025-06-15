@@ -1,4 +1,4 @@
-mod pool;
+mod core;
 mod wallet;
 
-pub use pool::{RelayerMessage, RelayerPool};
+pub use core::{RelayerMessage, RelayerPool};

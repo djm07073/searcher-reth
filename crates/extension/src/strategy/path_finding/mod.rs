@@ -1,82 +1,68 @@
 pub mod types;
 
-use alloy_primitives::{Address, U256};
-use alloy_sol_types::{SolCall, SolValue, sol};
-use eyre::{Error, Ok, Result};
+use alloy_primitives::{ Address, U256 };
+use alloy_sol_types::{ SolCall, SolValue, sol };
+use eyre::{ Error, Ok, Result };
 use rayon::prelude::*;
-use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{
-    Context, MainBuilder, MainContext, SystemCallEvm,
-    context::{BlockEnv, CfgEnv, Evm, TxEnv},
+    Context,
+    MainBuilder,
+    MainContext,
+    SystemCallEvm,
+    context::{ BlockEnv, CfgEnv, Evm, TxEnv },
     database::StateProviderDatabase,
     db::CacheDB,
-    handler::{EthPrecompiles, instructions::EthInstructions},
+    handler::{ EthPrecompiles, instructions::EthInstructions },
     interpreter::interpreter::EthInterpreter,
-    state::{AccountInfo, Bytecode},
+    state::{ AccountInfo, Bytecode },
 };
 use reth_transaction_pool::PoolTransaction;
-use revm::{
-    context::result::{ExecutionResult, Output},
-    state::EvmState,
-};
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-};
-use types::STRATEGY_CONTRACT_ADDRESS;
+use revm::{ context::result::{ ExecutionResult, Output }, state::EvmState };
+use std::{ collections::HashMap, sync::{ Arc, Mutex, atomic::{ AtomicBool, Ordering } } };
+use types::{ executeCall, Hop };
+use reth_tracing::tracing;
 
 use crate::strategy::path_finding::types::getProfitCall;
 
-pub use types::RoutePath;
-
-use super::core::Strategy;
+use super::core::{ Strategy, STRATEGY_CONTRACT_ADDRESS };
 
 type PathFinderCtx<'a, DB> = Context<
     BlockEnv,
     TxEnv,
     CfgEnv,
-    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>,
+    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>
 >;
 
-pub struct PathFinder<'a, DB>
-where
-    DB: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
+pub struct PathFinder<'a, DB> where DB: DBProvider + BlockHashReader + StateCommitmentProvider {
     evm: Evm<
         PathFinderCtx<'a, DB>,
         (),
         EthInstructions<EthInterpreter, PathFinderCtx<'a, DB>>,
-        EthPrecompiles,
+        EthPrecompiles
     >,
 }
 
-impl<'a, DB> PathFinder<'a, DB>
-where
-    DB: DBProvider + BlockHashReader + StateCommitmentProvider,
+impl<'a, StrategyDB> Strategy<'a>
+    for PathFinder<'a, StrategyDB>
+    where StrategyDB: DBProvider + BlockHashReader + StateCommitmentProvider
 {
+    type Action = Hop;
+
+    type DB = StrategyDB;
+
     /// Creates a new instance of the PathFinder
-    pub fn new(provider: LatestStateProviderRef<'a, DB>, contract: Bytecode) -> Self {
+    fn create(provider: LatestStateProviderRef<'a, StrategyDB>, contract: Bytecode) -> Self {
         let mut db = CacheDB::new(StateProviderDatabase::new(provider));
-        db.insert_account_info(
-            STRATEGY_CONTRACT_ADDRESS,
-            AccountInfo {
-                code_hash: contract.hash_slow(),
-                code: Some(contract),
-                ..Default::default()
-            },
-        );
+        db.insert_account_info(STRATEGY_CONTRACT_ADDRESS, AccountInfo {
+            code_hash: contract.hash_slow(),
+            code: Some(contract),
+            ..Default::default()
+        });
         let evm = Context::mainnet().with_db(db).build_mainnet();
         Self { evm }
     }
-}
 
-impl<'a, DB> Strategy for PathFinder<'a, DB>
-where
-    DB: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
     fn get_vault_balance(&mut self, vault: Address, token: Address) -> U256 {
         sol! {
             function balanceOf(address account) external view returns (uint256);
@@ -95,10 +81,10 @@ where
         &mut self,
         vault: Address,
         pending_txs: Vec<T>,
-        candidates: Vec<HashMap<Address, Vec<RoutePath>>>,
+        candidates: Vec<HashMap<Address, Vec<Vec<Self::Action>>>>,
         max_profit_ratio: U256,
-        min_profit_ratio: U256,
-    ) -> Result<Vec<RoutePath>, Error> {
+        min_profit_ratio: U256
+    ) -> Result<Vec<u8>, Error> {
         let mut balances: HashMap<Address, U256> = HashMap::new();
         // Get balances for all tokens in the candidate paths
         for candidate_map in candidates.clone() {
@@ -124,7 +110,7 @@ where
 
         // 2. Filter candidates based on vault balances and profit ratios
         let found_max_profit = Arc::new(AtomicBool::new(false));
-        let profitable_candidates: Vec<RoutePath> = candidates
+        let profitable_candidates: Vec<Vec<Self::Action>> = candidates
             .par_iter()
             .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
             .flat_map(|candidate| {
@@ -139,16 +125,17 @@ where
                             return None;
                         }
 
-                        let encoded_data =
-                            (getProfitCall { initialAmt: balance, route: path.clone() })
-                                .abi_encode();
+                        let encoded_data = (getProfitCall {
+                            initialAmt: balance,
+                            route: path.clone(),
+                        }).abi_encode();
 
                         let result = {
                             let mut evm = pevm.lock().unwrap();
                             let result = evm
                                 .transact_system_call(
                                     encoded_data.into(),
-                                    STRATEGY_CONTRACT_ADDRESS,
+                                    STRATEGY_CONTRACT_ADDRESS
                                 )
                                 .unwrap();
 
@@ -182,6 +169,51 @@ where
             })
             .collect();
 
-        Ok(profitable_candidates)
+        // Log the routes being sent
+        let routes = profitable_candidates
+            .clone()
+            .iter()
+            .map(|route| format!("{:?}", route))
+            .collect::<Vec<String>>();
+        let route_len = routes.len();
+        tracing::info!(
+            target: "reth-exex",
+            action = "send_candidates_to_relayer_pool",
+            route_len = route_len,
+            routes = routes.join(", "),
+            "Sending encoded calldata to socket"
+        );
+
+        // Encode the profitable candidates into calldata
+        let calldata = (executeCall {
+            routes: profitable_candidates.clone(),
+        }).abi_encode();
+
+        Ok(calldata)
+    }
+
+    fn has_dirty_state(result_state: &EvmState, dirty_states: &[EvmState]) -> bool {
+        if dirty_states.is_empty() {
+            return false;
+        }
+
+        let dirty_keys: revm::primitives::HashSet<(Address, _)> = dirty_states
+            .iter()
+            .flat_map(|state| {
+                state
+                    .iter()
+                    .filter(|(_, account)| account.is_touched())
+                    .flat_map(|(addr, account)|
+                        account.storage.keys().map(move |key| (*addr, *key))
+                    )
+            })
+            .collect();
+
+        result_state
+            .iter()
+            .filter(|(_, account)| account.is_touched())
+            .any(|(address, account)| {
+                account.storage.keys().any(|key| dirty_keys.contains(&(*address, *key)))
+            })
     }
 }

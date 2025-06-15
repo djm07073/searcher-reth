@@ -9079,7 +9079,6 @@ dependencies = [
  "searcher-reth-config",
  "searcher-reth-extension",
  "searcher-reth-repository",
- "searcher-reth-rpc",
  "searcher-reth-util",
  "secp256k1",
  "serde_json",
@@ -9152,21 +9151,6 @@ dependencies = [
  "dotenvy",
  "eyre",
  "reth-revm",
- "tokio",
-]
-
-[[package]]
-name = "searcher-reth-rpc"
-version = "0.0.0"
-dependencies = [
- "clap",
- "eyre",
- "jsonrpsee",
- "reth-revm",
- "searcher-reth-extension",
- "searcher-reth-repository",
- "serde",
- "serde_json",
  "tokio",
 ]
 

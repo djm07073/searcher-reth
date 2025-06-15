@@ -41,7 +41,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde_json = "1"
 clap = "4.5.37"
 searcher-reth-repository.workspace = true
-searcher-reth-rpc.workspace = true
 tracing-appender = "0.2.3"
 tracing-subscriber = "0.3.19"
 searcher-reth-util.workspace = true
