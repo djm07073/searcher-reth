@@ -2,16 +2,6 @@ use crate::schema::*;
 use diesel::prelude::*;
 
 #[derive(Debug, Clone, Queryable, Identifiable)]
-#[diesel(primary_key(chain_id, address))]
-#[diesel(table_name = contract)]
-pub struct Contract {
-    pub chain_id: i32,
-    pub address: String,
-    pub bytecode: String,
-    pub metadata: String,
-}
-
-#[derive(Debug, Clone, Queryable, Identifiable)]
 #[diesel(primary_key(chain_id, address, priority))]
 #[diesel(table_name = token)]
 pub struct Token {

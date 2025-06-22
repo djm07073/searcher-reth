@@ -1,0 +1,284 @@
+use alloy_primitives::{Address, B256, U256};
+use alloy_rpc_types::{AccessList, AccessListItem};
+use alloy_sol_types::{SolCall, SolValue, sol};
+use eyre::{Error, Ok, Result};
+use rayon::prelude::*;
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use reth_revm::{
+    Context, MainBuilder, MainContext, SystemCallEvm,
+    context::{
+        BlockEnv, CfgEnv, Evm, TxEnv,
+        result::{ExecutionResult, Output, ResultAndState},
+    },
+    database::StateProviderDatabase,
+    db::CacheDB,
+    handler::{EthPrecompiles, instructions::EthInstructions},
+    interpreter::interpreter::EthInterpreter,
+    state::{AccountInfo, Bytecode, EvmState},
+};
+use reth_tracing::tracing;
+use reth_transaction_pool::PoolTransaction;
+use searcher_reth_config::strategy::{CommonStrategyConfig, StrategyConfig};
+use searcher_reth_core::strategy::{STRATEGY_CONTRACT_ADDRESS, Strategy};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use crate::path_finding::types::executeCall;
+
+use super::types::{Hop, getProfitCall};
+
+type PathFinderCtx<'a, DB> = Context<
+    BlockEnv,
+    TxEnv,
+    CfgEnv,
+    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>,
+>;
+
+type PathFinderEvm<'a, DB> = Evm<
+    PathFinderCtx<'a, DB>,
+    (),
+    EthInstructions<EthInterpreter, PathFinderCtx<'a, DB>>,
+    EthPrecompiles,
+>;
+
+pub struct PathFinder<'a, StrategyDatabase>
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
+{
+    evm: Option<PathFinderEvm<'a, StrategyDatabase>>,
+    vault: Address,
+    contract: Bytecode,
+    max_profit_ratio: U256,
+    min_profit_ratio: U256,
+}
+
+impl<'a, StrategyDatabase> Strategy<'a> for PathFinder<'a, StrategyDatabase>
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
+{
+    type Action = Hop;
+
+    type DB = StrategyDatabase;
+
+    fn new(config: &StrategyConfig) -> Self {
+        let vault = config.get_vault();
+        let contract = config.get_contract();
+        let (max_profit_ratio, min_profit_ratio) = config.get_profit_ratios();
+        Self { evm: None, contract, vault, max_profit_ratio, min_profit_ratio }
+    }
+
+    fn set_last_state(&mut self, provider: LatestStateProviderRef<'a, Self::DB>) {
+        let mut db: CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, StrategyDatabase>>> =
+            CacheDB::new(StateProviderDatabase::new(provider));
+        let contract = self.contract.clone();
+        db.insert_account_info(
+            STRATEGY_CONTRACT_ADDRESS,
+            AccountInfo {
+                code_hash: contract.hash_slow(),
+                code: Some(contract.clone()),
+                ..Default::default()
+            },
+        );
+
+        let evm = Context::mainnet().with_db(db).build_mainnet();
+
+        self.evm = Some(evm);
+    }
+
+    fn get_code(&self) -> Bytecode {
+        self.contract.clone()
+    }
+
+    fn get_vault(&self) -> Address {
+        self.vault
+    }
+
+    fn get_vault_balance(&mut self, token: Address) -> U256 {
+        let evm = self.evm.as_mut().unwrap();
+        sol! {
+            function balanceOf(address account) external view returns (uint256);
+        }
+        let encoded = (balanceOfCall { account: self.vault }).abi_encode();
+
+        let result = evm.transact_system_call(encoded.into(), token).unwrap();
+        match result.result {
+            ExecutionResult::Success { output: Output::Call(value), .. } => {
+                <U256>::abi_decode(&value).unwrap()
+            }
+            _ => U256::ZERO,
+        }
+    }
+
+    fn find_profitable_candidates<T: PoolTransaction>(
+        &mut self,
+        pending_txs: Vec<T>,
+        candidates: HashMap<Address, Vec<Vec<Self::Action>>>,
+    ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
+        let mut initial_balances: HashMap<Address, U256> = HashMap::new();
+        // 1. Get balances for all tokens in the candidate paths
+        for initial_token in candidates.keys().cloned() {
+            initial_balances.insert(initial_token, self.get_vault_balance(initial_token));
+        }
+        // 2. Get dirty states from pending transactions
+        let evm = self.evm.as_mut().unwrap();
+        let pevm = Arc::new(Mutex::new(evm));
+        let dirty_states: Vec<EvmState> = pending_txs
+            .par_iter()
+            .filter_map(|tx| {
+                if let Some(to) = tx.to() {
+                    let data = tx.input().clone();
+                    let result = pevm.lock().unwrap().transact_system_call(data, to).unwrap();
+                    Some(result.state)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // 3. Filter candidates based on vault balances and profit ratios
+        let max_profit_ratio = self.max_profit_ratio;
+        let min_profit_ratio = self.min_profit_ratio;
+        let found_max_profit = Arc::new(AtomicBool::new(false));
+
+        let result = candidates
+            .par_iter()
+            .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
+            .fold(
+                || (Vec::new(), HashMap::<Address, Vec<B256>>::new()),
+                |mut acc, (initial_token, paths)| {
+                    let balance = initial_balances[initial_token];
+                    if balance.is_zero() {
+                        return acc;
+                    }
+
+                    if found_max_profit.load(Ordering::Relaxed) {
+                        return acc;
+                    }
+
+                    let results: Vec<(Vec<Hop>, Vec<AccessListItem>)> = paths
+                        .par_iter()
+                        .filter_map(|path| {
+                            if found_max_profit.load(Ordering::Relaxed) {
+                                return None;
+                            }
+
+                            let encoded_data =
+                                (getProfitCall { initialAmt: balance, route: path.clone() })
+                                    .abi_encode();
+
+                            let element: Option<(Vec<Hop>, Vec<AccessListItem>)> = {
+                                let mut evm = pevm.lock().unwrap();
+                                let ResultAndState { result, state } = evm
+                                    .transact_system_call(
+                                        encoded_data.into(),
+                                        STRATEGY_CONTRACT_ADDRESS,
+                                    )
+                                    .unwrap();
+
+                                let clean_states =
+                                    Self::collect_clean_states(&state, &dirty_states);
+
+                                clean_states.as_ref()?;
+
+                                let net_profit = match result {
+                                    ExecutionResult::Success {
+                                        output: Output::Call(value),
+                                        ..
+                                    } => <U256>::abi_decode(&value).unwrap(),
+
+                                    ExecutionResult::Revert { gas_used: _, output } => {
+                                        tracing::error!(
+                                            target: "reth-exex",
+                                            action = "get_profit_call_revert",
+                                            "getProfitCall reverted with output: {:?}",
+                                            output
+                                        );
+                                        return None;
+                                    }
+                                    _ => {
+                                        return None;
+                                    }
+                                };
+
+                                let net_profit_ratio = net_profit.checked_div(balance).unwrap();
+
+                                if net_profit_ratio.ge(&max_profit_ratio) {
+                                    found_max_profit.store(true, Ordering::Relaxed);
+                                    Some((path.clone(), clean_states.unwrap()))
+                                } else if net_profit_ratio.ge(&min_profit_ratio) {
+                                    Some((path.clone(), clean_states.unwrap()))
+                                } else {
+                                    return None;
+                                }
+                            };
+
+                            element
+                        })
+                        .collect();
+
+                    // accumulate results
+                    for (profitable_path, path_access_items) in results {
+                        acc.0.push(profitable_path);
+                        for item in path_access_items {
+                            if let Some(storage_keys) = acc.1.get_mut(&item.address) {
+                                storage_keys.extend(item.storage_keys);
+                            } else {
+                                acc.1.insert(item.address, item.storage_keys);
+                            }
+                        }
+                    }
+
+                    acc
+                },
+            )
+            // Combine results from all threads
+            .reduce_with(|mut acc, curr| {
+                acc.0.extend(curr.0);
+                for (address, storage_keys) in curr.1 {
+                    if let Some(existing_keys) = acc.1.get_mut(&address) {
+                        existing_keys.extend(storage_keys);
+                    } else {
+                        acc.1.insert(address, storage_keys);
+                    }
+                }
+
+                acc
+            })
+            // Convert to the final result
+            .map(|(paths, access_map)| {
+                let access_list = AccessList::from(
+                    access_map
+                        .into_iter()
+                        .map(|(address, storage_keys)| AccessListItem { address, storage_keys })
+                        .collect::<Vec<AccessListItem>>(),
+                );
+
+                if !paths.is_empty() {
+                    // Log the routes being sent
+                    let routes = paths
+                        .clone()
+                        .iter()
+                        .map(|route| format!("{:?}", route))
+                        .collect::<Vec<String>>();
+                    let route_len = routes.len();
+                    tracing::info!(
+                        target: "reth-exex",
+                        action = "send_profitable_candidates_to_relayer_pool",
+                        route_len = route_len,
+                        routes = routes.join(", "),
+                    );
+                }
+
+                let calldata = (executeCall { routes: paths }).abi_encode();
+
+                (calldata, access_list)
+            });
+
+        Ok(result)
+    }
+}

@@ -3,12 +3,22 @@ mod schema;
 mod types;
 
 use diesel::{prelude::*, sqlite::SqliteConnection};
-use eyre::Result;
+use model::{Hop as HopModel, HopType};
 use reth_revm::primitives::Address;
+use searcher_reth_strategy::{Hop, core::candidate::CandidatesResult};
 use std::collections::HashMap;
 
-use model::*;
-use types::{DexType, Priority};
+impl From<HopModel> for Hop {
+    fn from(val: HopModel) -> Self {
+        Hop {
+            dexType: val.dex_type as u8,
+            dex: val.address.parse::<Address>().unwrap(),
+            srcToken: val.src_token.parse::<Address>().unwrap(),
+            dstToken: val.dst_token.parse::<Address>().unwrap(),
+            metadata: val.metadata.into_bytes().into(),
+        }
+    }
+}
 
 pub struct SearcherRepository {
     database_url: String,
@@ -19,23 +29,24 @@ impl SearcherRepository {
         Self { database_url: database_url.into() }
     }
 
-    pub fn get_route_paths(&self, id: u64) -> Result<HashMap<Address, Vec<Vec<Hop>>>> {
+    pub fn get_candidates(&self, id: u64) -> CandidatesResult<Hop> {
         use schema::hop::dsl::*;
 
         let mut conn = SqliteConnection::establish(&self.database_url)?;
-        let start_hops: Vec<Hop> = hop
+
+        let start_hops: Vec<HopModel> = hop
             .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::Start as i32)) // Start type
+            .filter(hop_type.eq(HopType::Start as i32))
             .load(&mut conn)?;
 
-        let inter_hops: Vec<Hop> = hop
+        let inter_hops: Vec<HopModel> = hop
             .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::Inter as i32)) // Inter type
+            .filter(hop_type.eq(HopType::Inter as i32))
             .load(&mut conn)?;
 
-        let end_hops: Vec<Hop> = hop
+        let end_hops: Vec<HopModel> = hop
             .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::End as i32)) // End type
+            .filter(hop_type.eq(HopType::End as i32))
             .load(&mut conn)?;
 
         let mut path_map: HashMap<Address, Vec<Vec<Hop>>> = HashMap::new();
@@ -44,17 +55,23 @@ impl SearcherRepository {
             let start_token: Address = start.src_token.parse().unwrap();
             let mut paths = Vec::new();
 
+            // 2-hop paths
             for end in &end_hops {
                 if start.dst_token == end.src_token {
-                    paths.push(vec![start.clone(), end.clone()]);
+                    paths.push(vec![start.clone().into(), end.clone().into()]);
                 }
             }
 
+            // 3-hop paths
             for inter in &inter_hops {
                 if start.dst_token == inter.src_token {
                     for end in &end_hops {
                         if inter.dst_token == end.src_token {
-                            paths.push(vec![start.clone(), inter.clone(), end.clone()]);
+                            paths.push(vec![
+                                start.clone().into(),
+                                inter.clone().into(),
+                                end.clone().into(),
+                            ]);
                         }
                     }
                 }
@@ -67,47 +84,17 @@ impl SearcherRepository {
 
         Ok(path_map)
     }
+}
 
-    pub fn get_all_tokens(&self, id: u64) -> Result<Vec<(Address, Priority)>> {
-        use schema::token::dsl::*;
-        let mut conn = SqliteConnection::establish(&self.database_url)?;
-        let token_records =
-            token.filter(chain_id.eq(id as i32)).order(priority.asc()).load::<Token>(&mut conn)?;
+// re-export the types for external use
+pub mod core {
+    pub use searcher_reth_strategy::core::*;
+}
 
-        let result = token_records
-            .into_iter()
-            .map(|t| {
-                let addr: Address = t.address.parse().unwrap();
-                (addr, t.priority.into())
-            })
-            .collect();
+pub mod config {
+    pub use searcher_reth_strategy::config::*;
+}
 
-        Ok(result)
-    }
-
-    pub fn get_all_dexs(&self, id: u64) -> Result<Vec<(Address, DexType)>> {
-        use schema::dex::dsl::*;
-        let mut conn = SqliteConnection::establish(&self.database_url)?;
-        let dex_records = dex.filter(chain_id.eq(id as i32)).load::<Dex>(&mut conn)?;
-
-        let result = dex_records
-            .into_iter()
-            .map(|d| {
-                let addr: Address = d.address.parse().unwrap();
-                (addr, d.dex_type as DexType)
-            })
-            .collect();
-
-        Ok(result)
-    }
-
-    pub fn update_contract(&self, id: u64, contract_code: String) -> Result<()> {
-        use schema::contract::dsl::*;
-        let mut conn = SqliteConnection::establish(&self.database_url)?;
-        diesel::update(contract.filter(chain_id.eq(id as i32)))
-            .set(bytecode.eq(contract_code))
-            .execute(&mut conn)?;
-
-        Ok(())
-    }
+pub mod path_finding {
+    pub use searcher_reth_strategy::{Hop, PathFinder};
 }

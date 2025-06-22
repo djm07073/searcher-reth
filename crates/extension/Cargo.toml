@@ -51,7 +51,7 @@ searcher-reth-util.workspace = true
 itertools = "0.11"
 rayon = "1.10.0"
 reth-transaction-pool.workspace = true
-
+toml.workspace = true
 
 
 [dev-dependencies]

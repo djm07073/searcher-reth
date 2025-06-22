@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 use reth::{
     api::FullNodeComponents,
     network::NetworkInfo,
-    rpc::types::TransactionRequest,
+    rpc::types::{AccessList, TransactionRequest},
     transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
 };
 use reth_primitives::{Recovered, TransactionSigned};
@@ -38,6 +38,7 @@ pub struct RelayerPool<FC: FullNodeComponents> {
 pub struct RelayerMessage {
     pub to: Address,
     pub calldata: Vec<u8>,
+    pub access_list: AccessList,
 }
 
 impl<FC> RelayerPool<FC>
@@ -59,21 +60,20 @@ where
     }
 
     pub async fn start(self: Arc<Self>) -> Result<Sender<RelayerMessage>> {
-        let (tx, rx) = mpsc::channel::<RelayerMessage>(100);
+        let (message_tx, message_rx) = mpsc::channel::<RelayerMessage>(100);
 
         // Spawn message handling task
         let this = self.clone();
         let signal_rx = self.signal_rx.resubscribe();
         tokio::spawn(async move {
-            this.handle_relayer_messages(rx, signal_rx).await;
+            this.handle_relayer_messages(message_rx, signal_rx).await;
         });
-        Ok(tx)
+        Ok(message_tx)
     }
 
     async fn send_and_subscribe_transaction(
         &self,
-        to: Address,
-        calldata: Vec<u8>,
+        message: RelayerMessage,
     ) -> Result<FixedBytes<32>> {
         let (from, atomic_nonce) = self.wallet.next_signer();
         let nonce = atomic_nonce.fetch_add(1, Ordering::SeqCst);
@@ -81,7 +81,7 @@ where
         tracing::info!(
             event = "transaction_send",
             nonce = nonce,
-            to = ?to,
+            to = ?message.to,
             from = ?from,
             "Sending and subscribing to transaction"
         );
@@ -90,8 +90,9 @@ where
         const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;
         const GAS_LIMIT: u64 = 21_000;
         let request = TransactionRequest::default()
-            .with_to(to)
-            .with_input(calldata)
+            .with_to(message.to)
+            .with_input(message.calldata)
+            .with_access_list(message.access_list)
             .with_nonce(nonce)
             .with_chain_id(self.chain_id)
             .with_gas_limit(GAS_LIMIT)
@@ -180,54 +181,65 @@ where
 
     async fn handle_relayer_messages(
         self: Arc<Self>,
-        mut rx: Receiver<RelayerMessage>,
+        mut message_rx: Receiver<RelayerMessage>,
         mut signal_rx: broadcast::Receiver<SignalType>,
     ) {
         let mut is_paused = true;
-        tokio::select! {
-            signal = signal_rx.recv() => {
-                match signal {
-                    Ok(SignalType::Pause) => {
-                        is_paused = true;
-                        tracing::info!(event = "status_change", status = "paused", "Relayer paused");
+
+        loop {
+            tokio::select! {
+                signal = signal_rx.recv() => {
+                    match signal {
+                        Ok(SignalType::Pause) => {
+                            is_paused = true;
+                            tracing::info!(event = "status_change", status = "paused", "Relayer paused");
+                        }
+                        Ok(SignalType::Resume) => {
+                            is_paused = false;
+                            tracing::info!(event = "status_change", status = "running", "Relayer resumed");
+                        }
+                        Ok(SignalType::Shutdown) => {
+                            tracing::info!(event = "shutdown", "Relayer received shutdown signal");
+                            return;
+                        }
+                        _ => {
+                            tracing::warn!(event = "signal_error", "Signal channel closed");
+                            return;
+                        }
                     }
-                    Ok(SignalType::Resume) => {
-                        is_paused = false;
-                        tracing::info!(event = "status_change", status = "running", "Relayer resumed");
-                    }
-                    Ok(SignalType::Shutdown) => {
-                        tracing::info!(event = "shutdown", "Relayer received shutdown signal");
-                        return;
-                    }
-                    Err(_) => {
-                        tracing::warn!(event = "signal_error", "Signal channel closed");
+                }
+
+                message = message_rx.recv() => {
+                    match message {
+                        Some(msg) => {
+                            if is_paused {
+                                tracing::info!(
+                                    event = "message_dropped",
+                                    "Dropping message due to paused state"
+                                );
+                                continue;
+                            }
+
+                            let this = self.clone();
+                            tokio::spawn(async move {
+                                if let Ok(hash) = this.send_and_subscribe_transaction(msg).await {
+                                    tracing::info!(
+                                        event = "transaction_sent",
+                                        tx_hash = ?hash,
+                                        "Transaction sent successfully"
+                                    );
+                                }
+                            });
+                        }
+                        None => {
+                            tracing::info!(event = "channel_closed", "Message channel closed");
+                            break;
+                        }
                     }
                 }
             }
         }
 
-        while let Some(message) = rx.recv().await {
-            if is_paused {
-                tracing::info!(
-                    event = "shutdown",
-                    "Stopping message processing due to shutdown signal"
-                );
-                break;
-            }
-
-            let this = self.clone();
-            tokio::spawn(async move {
-                if let Ok(hash) =
-                    this.send_and_subscribe_transaction(message.to, message.calldata).await
-                {
-                    tracing::info!(
-                        event = "transaction_sent",
-                        tx_hash = ?hash,
-                        "Transaction sent successfully"
-                    );
-                }
-            });
-        }
         tracing::info!(event = "shutdown", "Message handler stopped");
     }
 }

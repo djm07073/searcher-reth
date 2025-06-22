@@ -2,7 +2,7 @@
 
 ```bash
 
-disel setup --database-url data/searcher.db
+diesel setup --database-url data/searcher.db
 
 diesel migration run
 

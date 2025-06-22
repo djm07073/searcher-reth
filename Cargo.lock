@@ -9060,7 +9060,51 @@ dependencies = [
  "clap",
  "eyre",
  "futures-util",
- "once_cell",
+ "reth",
+ "reth-chainspec",
+ "reth-db",
+ "reth-evm",
+ "reth-execution-errors",
+ "reth-execution-types",
+ "reth-exex",
+ "reth-node-api",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-provider",
+ "reth-revm",
+ "reth-tracing",
+ "searcher-reth-extension",
+ "tokio",
+]
+
+[[package]]
+name = "searcher-reth-config"
+version = "0.1.0"
+dependencies = [
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-signer-local",
+ "eyre",
+ "reth-revm",
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "searcher-reth-core"
+version = "0.0.0"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types",
+ "alloy-signer-local",
+ "alloy-sol-types",
+ "eyre",
+ "futures-util",
  "reth",
  "reth-chainspec",
  "reth-evm",
@@ -9072,31 +9116,10 @@ dependencies = [
  "reth-primitives",
  "reth-provider",
  "reth-revm",
- "reth-testing-utils",
  "reth-tracing",
  "reth-transaction-pool",
- "rusqlite",
  "searcher-reth-config",
- "searcher-reth-extension",
- "searcher-reth-repository",
- "searcher-reth-util",
- "secp256k1",
- "serde_json",
  "tokio",
- "tracing-appender",
- "tracing-subscriber 0.3.19",
-]
-
-[[package]]
-name = "searcher-reth-config"
-version = "0.1.0"
-dependencies = [
- "alloy-network",
- "alloy-primitives",
- "alloy-signer-local",
- "eyre",
- "serde",
- "toml",
 ]
 
 [[package]]
@@ -9141,6 +9164,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml",
 ]
 
 [[package]]
@@ -9151,7 +9175,47 @@ dependencies = [
  "dotenvy",
  "eyre",
  "reth-revm",
+ "searcher-reth-strategy",
  "tokio",
+]
+
+[[package]]
+name = "searcher-reth-strategy"
+version = "0.0.0"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types",
+ "alloy-signer-local",
+ "alloy-sol-types",
+ "eyre",
+ "futures-util",
+ "itertools 0.11.0",
+ "once_cell",
+ "rayon",
+ "reth",
+ "reth-chainspec",
+ "reth-evm",
+ "reth-execution-errors",
+ "reth-execution-types",
+ "reth-exex",
+ "reth-node-api",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-provider",
+ "reth-revm",
+ "reth-tracing",
+ "reth-transaction-pool",
+ "searcher-reth-config",
+ "searcher-reth-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
 ]
 
 [[package]]

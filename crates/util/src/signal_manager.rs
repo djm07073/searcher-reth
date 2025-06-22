@@ -9,6 +9,7 @@ pub enum SignalType {
     Shutdown,
     Pause,
     Resume,
+    Reload,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,7 @@ impl SignalManager {
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
         let mut sigusr1 = signal(SignalKind::user_defined1())?;
+        let mut sigusr2 = signal(SignalKind::user_defined2())?;
 
         tracing::info!(
             event = "signal_handler_start",
@@ -54,9 +56,15 @@ impl SignalManager {
 
                     let _ = self.signal_tx.send(signal_type);
                     tracing::info!(
-                        event = "status_toggle",
+                        event = "turn off/on",
                         status = status_str,
-                        "Service {} via SIGUSR1", status_str
+                    );
+                }
+                _ = sigusr2.recv() => {
+                    let _ = self.signal_tx.send(SignalType::Reload);
+                    tracing::info!(
+                        event = "reload",
+                        status = "reloaded",
                     );
                 }
                 _ = sigterm.recv() => {

@@ -21,5 +21,3 @@ impl From<i32> for Priority {
         }
     }
 }
-
-pub type DexType = u8;

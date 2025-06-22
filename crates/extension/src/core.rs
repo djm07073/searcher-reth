@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use alloy_primitives::{ Address, U256 };
 use eyre::{ Error, Result };
-use revm::{ primitives::Bytes, state::Bytecode };
+use reth_revm::{ primitives::Bytes, state::Bytecode };
 
 use clap::Args;
 

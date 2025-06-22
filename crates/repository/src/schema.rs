@@ -1,15 +1,6 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    contract (chain_id, address) {
-        chain_id -> Integer,
-        address -> Text,
-        bytecode -> Text,
-        metadata -> Text,
-    }
-}
-
-diesel::table! {
     dex (chain_id, address, dex_type) {
         chain_id -> Integer,
         address -> Text,
@@ -37,4 +28,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(contract, dex, hop, token,);
+diesel::allow_tables_to_appear_in_same_query!(dex, hop, token);
