@@ -147,7 +147,6 @@ where
 
         let result = candidates
             .par_iter()
-            .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
             .fold(
                 || (Vec::new(), HashMap::<Address, Vec<B256>>::new()),
                 |mut acc, (initial_token, paths)| {

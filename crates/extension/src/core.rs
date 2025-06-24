@@ -27,7 +27,7 @@ pub struct SetupArgs {
     #[clap(long = "max-profit", default_value = "0.001")] // 0.001%
     pub max_profit: String,
 
-    #[clap(long = "mint-profit", default_value = "0.0005")] // 0.0005%
+    #[clap(long = "min-profit", default_value = "0.0005")] // 0.0005%
     pub min_profit: String,
 }
 
