@@ -73,3 +73,30 @@ pub struct PathFinderConfig {
 }
 
 // TODO: Add other strategy configurations
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_common_strategy_functions() {
+        let cfg = PathFinderConfig {
+            vault: "0x0000000000000000000000000000000000000000".to_string(),
+            contract: "00".to_string(),
+            max_profit_ratio: "0.005".to_string(),
+            min_profit_ratio: "0.001".to_string(),
+        };
+        let strategy = StrategyConfig::PathFinder(cfg.clone());
+
+        assert_eq!(strategy.get_exex_id(), PATH_FINDER_EXEX_ID);
+        assert_eq!(strategy.get_vault(), cfg.vault.parse().unwrap());
+
+        let (max, min) = strategy.get_profit_ratios();
+        let expected_max = ((0.005_f64 * 1_000_000.0) as u128 * 1_000_000_000_000_000_000u128)
+            / 1_000_000u128;
+        let expected_min = ((0.001_f64 * 1_000_000.0) as u128 * 1_000_000_000_000_000_000u128)
+            / 1_000_000u128;
+        assert_eq!(max, U256::from(expected_max));
+        assert_eq!(min, U256::from(expected_min));
+    }
+}
