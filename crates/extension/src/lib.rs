@@ -1,6 +1,5 @@
 pub mod exex;
 pub mod relayer_pool;
-// pub mod core;
 
 // re-export the types for external use
 pub mod repository {
