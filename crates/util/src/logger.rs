@@ -52,3 +52,21 @@ fn get_log_dir() -> String {
         .map(|home| format!("{}/logs", home))
         .unwrap_or_else(|_| "./logs".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::get_log_dir;
+
+    #[test]
+    fn returns_log_dir_from_env() {
+        std::env::set_var("LOG_DIR", "/tmp/test_logs");
+        assert_eq!(get_log_dir(), "/tmp/test_logs");
+        std::env::remove_var("LOG_DIR");
+    }
+
+    #[test]
+    fn returns_default_log_dir_in_debug() {
+        std::env::remove_var("LOG_DIR");
+        assert_eq!(get_log_dir(), "./logs");
+    }
+}

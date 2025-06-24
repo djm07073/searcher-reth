@@ -75,3 +75,63 @@ pub struct LoggingConfig {
     pub level: String,
     pub file: Option<PathBuf>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    const CONFIG_V1: &str = r#"
+        [relayer]
+        mnemonic = "mnemonic1"
+
+        [database]
+        path = "/tmp/db1.sqlite"
+
+        [logging]
+        level = "info"
+        file = "/tmp/log1.log"
+
+        [strategies.path-finder]
+        vault = "0x0000000000000000000000000000000000000000"
+        contract = "0x00"
+        max_profit_ratio = "0.005"
+        min_profit_ratio = "0.001"
+    "#;
+
+    const CONFIG_V2: &str = r#"
+        [relayer]
+        mnemonic = "mnemonic2"
+
+        [database]
+        path = "/tmp/db2.sqlite"
+
+        [logging]
+        level = "debug"
+        file = "/tmp/log2.log"
+
+        [strategies.path-finder]
+        vault = "0x0000000000000000000000000000000000000001"
+        contract = "0x01"
+        max_profit_ratio = "0.010"
+        min_profit_ratio = "0.002"
+    "#;
+
+    #[test]
+    fn test_from_file_and_reload() {
+        let path = std::env::temp_dir().join("searcher_config_test.toml");
+        fs::write(&path, CONFIG_V1).unwrap();
+
+        let mut cfg = SearcherConfig::from_file(path.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.relayer.mnemonic, "mnemonic1");
+        assert_eq!(cfg.logging.level, "info");
+
+        fs::write(&path, CONFIG_V2).unwrap();
+        cfg.reload(path.to_str().unwrap()).unwrap();
+
+        assert_eq!(cfg.relayer.mnemonic, "mnemonic2");
+        assert_eq!(cfg.logging.level, "debug");
+
+        let _ = fs::remove_file(&path);
+    }
+}
