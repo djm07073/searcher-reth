@@ -46,6 +46,8 @@ type PathFinderEvm<'a, DB> = Evm<
     EthPrecompiles,
 >;
 
+const PROFITABLE_PATHS_LIMIT: usize = 10;
+
 pub struct PathFinder<'a, StrategyDatabase>
 where
     StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
@@ -148,6 +150,7 @@ where
         let result = candidates
             .par_iter()
             .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
+            .take_any(PROFITABLE_PATHS_LIMIT)
             .fold(
                 || (Vec::new(), HashMap::<Address, Vec<B256>>::new()),
                 |mut acc, (initial_token, paths)| {
