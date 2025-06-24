@@ -12,7 +12,7 @@ reth-revm.workspace = true
 eyre.workspace = true
 tokio.workspace = true
 
-diesel = { version = "2.2.0", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
+diesel = { workspace = true, features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
 
-dotenvy = "0.15"
+dotenvy.workspace = true
 searcher-reth-strategy.workspace = true

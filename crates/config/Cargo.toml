@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 
-eyre = "0.6"
+eyre.workspace = true
 alloy-network.workspace = true
 alloy-signer-local.workspace = true
 alloy-primitives.workspace = true
