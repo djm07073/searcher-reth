@@ -59,14 +59,14 @@ mod tests {
 
     #[test]
     fn returns_log_dir_from_env() {
-        std::env::set_var("LOG_DIR", "/tmp/test_logs");
+        unsafe { std::env::set_var("LOG_DIR", "/tmp/test_logs") };
         assert_eq!(get_log_dir(), "/tmp/test_logs");
-        std::env::remove_var("LOG_DIR");
+        unsafe { std::env::remove_var("LOG_DIR") };
     }
 
     #[test]
     fn returns_default_log_dir_in_debug() {
-        std::env::remove_var("LOG_DIR");
+        unsafe { std::env::remove_var("LOG_DIR") };
         assert_eq!(get_log_dir(), "./logs");
     }
 }

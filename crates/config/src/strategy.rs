@@ -1,14 +1,13 @@
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{ Address, Bytes, U256 };
 use reth_revm::state::Bytecode;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum StrategyConfig {
-    #[serde(rename = "path-finder")]
-    PathFinder(PathFinderConfig),
+    #[serde(rename = "path-finder")] PathFinder(PathFinderConfig),
     // #[serde(rename = "liquidation")] Liquidation(LiquidationConfig),
     // #[serde(rename = "arbitrage")] Arbitrage(ArbitrageConfig),
 }
@@ -46,18 +45,19 @@ impl CommonStrategyConfig for StrategyConfig {
 
     fn get_profit_ratios(&self) -> (U256, U256) {
         match self {
-            StrategyConfig::PathFinder(config) => (
-                U256::from(
-                    (((config.max_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
-                        * ONE_ETHER)
-                        / 1_000_000,
+            StrategyConfig::PathFinder(config) =>
+                (
+                    U256::from(
+                        (((config.max_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128) *
+                            ONE_ETHER) /
+                            1_000_000
+                    ),
+                    U256::from(
+                        (((config.min_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128) *
+                            ONE_ETHER) /
+                            1_000_000
+                    ),
                 ),
-                U256::from(
-                    (((config.min_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
-                        * ONE_ETHER)
-                        / 1_000_000,
-                ),
-            ),
         }
     }
 }
@@ -89,13 +89,13 @@ mod tests {
         let strategy = StrategyConfig::PathFinder(cfg.clone());
 
         assert_eq!(strategy.get_exex_id(), PATH_FINDER_EXEX_ID);
-        assert_eq!(strategy.get_vault(), cfg.vault.parse().unwrap());
+        assert_eq!(strategy.get_vault(), cfg.vault.parse::<Address>().unwrap());
 
         let (max, min) = strategy.get_profit_ratios();
-        let expected_max = ((0.005_f64 * 1_000_000.0) as u128 * 1_000_000_000_000_000_000u128)
-            / 1_000_000u128;
-        let expected_min = ((0.001_f64 * 1_000_000.0) as u128 * 1_000_000_000_000_000_000u128)
-            / 1_000_000u128;
+        let expected_max =
+            (((0.005_f64 * 1_000_000.0) as u128) * 1_000_000_000_000_000_000u128) / 1_000_000u128;
+        let expected_min =
+            (((0.001_f64 * 1_000_000.0) as u128) * 1_000_000_000_000_000_000u128) / 1_000_000u128;
         assert_eq!(max, U256::from(expected_max));
         assert_eq!(min, U256::from(expected_min));
     }

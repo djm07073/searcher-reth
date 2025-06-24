@@ -92,7 +92,8 @@ mod tests {
         level = "info"
         file = "/tmp/log1.log"
 
-        [strategies.path-finder]
+        [strategy]
+        [path-finder]
         vault = "0x0000000000000000000000000000000000000000"
         contract = "0x00"
         max_profit_ratio = "0.005"
@@ -110,7 +111,8 @@ mod tests {
         level = "debug"
         file = "/tmp/log2.log"
 
-        [strategies.path-finder]
+        [strategy]
+        [path-finder]
         vault = "0x0000000000000000000000000000000000000001"
         contract = "0x01"
         max_profit_ratio = "0.010"
