@@ -1,3 +1,4 @@
+use alloy_primitives::{ map::{ HashMap, HashSet }, Address, B256 };
 use alloy_sol_types::sol;
 
 sol! {
@@ -16,3 +17,5 @@ sol! {
         Hop[][] memory routes
     ) external returns (uint256 profit);
 }
+
+
