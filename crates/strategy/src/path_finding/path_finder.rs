@@ -1,49 +1,57 @@
-use alloy_primitives::{ map::HashSet, Address, B256, U256 };
-use alloy_rpc_types::{ AccessList, AccessListItem };
-use alloy_sol_types::{ SolCall, SolValue, sol };
-use eyre::{ Error, Ok, Result };
+use alloy_primitives::{Address, B256, U256, map::HashSet};
+use alloy_rpc_types::{AccessList, AccessListItem};
+use alloy_sol_types::{SolCall, SolValue, sol};
+use eyre::{Error, Ok, Result};
 use rayon::prelude::*;
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
-    context::{ result::{ ExecutionResult, Output, ResultAndState }, BlockEnv, CfgEnv, Evm, TxEnv },
+    Context, MainBuilder, MainContext, SystemCallEvm,
+    context::{
+        BlockEnv, CfgEnv, Evm, TxEnv,
+        result::{ExecutionResult, Output, ResultAndState},
+    },
     database::StateProviderDatabase,
     db::CacheDB,
-    handler::{ instructions::EthInstructions, EthPrecompiles },
+    handler::{EthPrecompiles, instructions::EthInstructions},
     interpreter::interpreter::EthInterpreter,
-    state::{ AccountInfo, Bytecode, EvmStorageSlot },
-    Context,
-    MainBuilder,
-    MainContext,
-    SystemCallEvm,
+    state::{AccountInfo, Bytecode},
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::strategy::{ CommonStrategyConfig, StrategyConfig };
-use searcher_reth_core::strategy::{ Strategy, STRATEGY_CONTRACT_ADDRESS };
-use std::{ collections::HashMap, sync::{ Arc, Mutex, atomic::{ AtomicBool, Ordering } } };
+use searcher_reth_config::strategy::{CommonStrategyConfig, StrategyConfig};
+use searcher_reth_core::strategy::{STRATEGY_CONTRACT_ADDRESS, Strategy};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use crate::path_finding::types::executeCall;
 
-use super::types::{ getProfitCall, Hop };
+use super::types::{Hop, getProfitCall};
 
 type PathFinderCtx<'a, DB> = Context<
     BlockEnv,
     TxEnv,
     CfgEnv,
-    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>
+    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>,
 >;
 
 type PathFinderEvm<'a, DB> = Evm<
     PathFinderCtx<'a, DB>,
     (),
     EthInstructions<EthInterpreter, PathFinderCtx<'a, DB>>,
-    EthPrecompiles
+    EthPrecompiles,
 >;
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
 
 pub struct PathFinder<'a, StrategyDatabase>
-    where StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider {
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
+{
     evm: Option<PathFinderEvm<'a, StrategyDatabase>>,
     vault: Address,
     contract: Bytecode,
@@ -51,9 +59,9 @@ pub struct PathFinder<'a, StrategyDatabase>
     min_profit_ratio: U256,
 }
 
-impl<'a, StrategyDatabase> Strategy<'a>
-    for PathFinder<'a, StrategyDatabase>
-    where StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider
+impl<'a, StrategyDatabase> Strategy<'a> for PathFinder<'a, StrategyDatabase>
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
 {
     type Action = Hop;
 
@@ -67,15 +75,17 @@ impl<'a, StrategyDatabase> Strategy<'a>
     }
 
     fn set_last_state(&mut self, provider: LatestStateProviderRef<'a, Self::DB>) {
-        let mut db: CacheDB<
-            StateProviderDatabase<LatestStateProviderRef<'a, StrategyDatabase>>
-        > = CacheDB::new(StateProviderDatabase::new(provider));
+        let mut db: CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, StrategyDatabase>>> =
+            CacheDB::new(StateProviderDatabase::new(provider));
         let contract = self.contract.clone();
-        db.insert_account_info(STRATEGY_CONTRACT_ADDRESS, AccountInfo {
-            code_hash: contract.hash_slow(),
-            code: Some(contract.clone()),
-            ..Default::default()
-        });
+        db.insert_account_info(
+            STRATEGY_CONTRACT_ADDRESS,
+            AccountInfo {
+                code_hash: contract.hash_slow(),
+                code: Some(contract.clone()),
+                ..Default::default()
+            },
+        );
 
         let evm = Context::mainnet().with_db(db).build_mainnet();
 
@@ -109,7 +119,7 @@ impl<'a, StrategyDatabase> Strategy<'a>
     fn find_profitable_candidates<T: PoolTransaction>(
         &mut self,
         pending_txs: Vec<T>,
-        candidates: HashMap<Address, Vec<Vec<Self::Action>>>
+        candidates: HashMap<Address, Vec<Vec<Self::Action>>>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
         let mut initial_balances: HashMap<Address, U256> = HashMap::new();
         // 1. Get balances for all tokens in the candidate paths
@@ -125,11 +135,13 @@ impl<'a, StrategyDatabase> Strategy<'a>
                 let to = tx.to()?;
                 let data = tx.input().clone();
                 let result = pevm.lock().unwrap().transact_system_call(data, to).unwrap();
-                let dirty_state: HashMap<Address, HashSet<U256>> = result.state
+                let dirty_state: HashMap<Address, HashSet<U256>> = result
+                    .state
                     .iter()
                     .filter(|(_, account)| account.is_touched())
                     .fold(HashMap::new(), |mut acc, (address, account)| {
-                        let changed_storage_keys: HashSet<U256> = account.storage
+                        let changed_storage_keys: HashSet<U256> = account
+                            .storage
                             .iter()
                             .filter(|(_, storage_slot)| storage_slot.is_changed())
                             .map(|(key, _)| *key)
@@ -178,28 +190,27 @@ impl<'a, StrategyDatabase> Strategy<'a>
                                 return None;
                             }
 
-                            let encoded_data = (getProfitCall {
-                                initialAmt: balance,
-                                route: path.clone(),
-                            }).abi_encode();
+                            let encoded_data =
+                                (getProfitCall { initialAmt: balance, route: path.clone() })
+                                    .abi_encode();
 
                             let element: Option<(Vec<Hop>, Vec<AccessListItem>)> = {
                                 let mut evm = pevm.lock().unwrap();
                                 let ResultAndState { result, state } = evm
                                     .transact_system_call(
                                         encoded_data.into(),
-                                        STRATEGY_CONTRACT_ADDRESS
+                                        STRATEGY_CONTRACT_ADDRESS,
                                     )
                                     .unwrap();
 
-                                let clean_states = Self::collect_clean_states(
-                                    &state,
-                                    &dirty_states
-                                );
+                                let clean_states =
+                                    Self::collect_clean_states(&state, &dirty_states);
 
                                 let net_profit = match result {
-                                    ExecutionResult::Success { output: Output::Call(value), .. } =>
-                                        <U256>::abi_decode(&value).unwrap(),
+                                    ExecutionResult::Success {
+                                        output: Output::Call(value),
+                                        ..
+                                    } => <U256>::abi_decode(&value).unwrap(),
 
                                     ExecutionResult::Revert { gas_used: _, output } => {
                                         tracing::error!(
@@ -244,7 +255,7 @@ impl<'a, StrategyDatabase> Strategy<'a>
                     }
 
                     acc
-                }
+                },
             )
             // Combine results from all threads
             .reduce_with(|mut acc, curr| {
@@ -265,7 +276,7 @@ impl<'a, StrategyDatabase> Strategy<'a>
                     access_map
                         .into_iter()
                         .map(|(address, storage_keys)| AccessListItem { address, storage_keys })
-                        .collect::<Vec<AccessListItem>>()
+                        .collect::<Vec<AccessListItem>>(),
                 );
 
                 if !paths.is_empty() {

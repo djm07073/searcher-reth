@@ -1,13 +1,14 @@
-use alloy_primitives::{ Address, Bytes, U256 };
+use alloy_primitives::{Address, Bytes, U256};
 use reth_revm::state::Bytecode;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum StrategyConfig {
-    #[serde(rename = "path-finder")] PathFinder(PathFinderConfig),
+    #[serde(rename = "path-finder")]
+    PathFinder(PathFinderConfig),
     // #[serde(rename = "liquidation")] Liquidation(LiquidationConfig),
     // #[serde(rename = "arbitrage")] Arbitrage(ArbitrageConfig),
 }
@@ -45,19 +46,18 @@ impl CommonStrategyConfig for StrategyConfig {
 
     fn get_profit_ratios(&self) -> (U256, U256) {
         match self {
-            StrategyConfig::PathFinder(config) =>
-                (
-                    U256::from(
-                        (((config.max_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128) *
-                            ONE_ETHER) /
-                            1_000_000
-                    ),
-                    U256::from(
-                        (((config.min_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128) *
-                            ONE_ETHER) /
-                            1_000_000
-                    ),
+            StrategyConfig::PathFinder(config) => (
+                U256::from(
+                    (((config.max_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
+                        * ONE_ETHER)
+                        / 1_000_000,
                 ),
+                U256::from(
+                    (((config.min_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
+                        * ONE_ETHER)
+                        / 1_000_000,
+                ),
+            ),
         }
     }
 }

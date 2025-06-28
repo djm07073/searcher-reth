@@ -1,10 +1,13 @@
-use alloy_primitives::{ address, Address, FixedBytes, U256 };
-use alloy_rpc_types::{ AccessList, AccessListItem };
+use alloy_primitives::{Address, FixedBytes, U256, address};
+use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
 use eyre::Error;
 
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
-use reth_revm::{ primitives::HashSet, state::{ Bytecode, EvmState } };
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use reth_revm::{
+    primitives::HashSet,
+    state::{Bytecode, EvmState},
+};
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_config::strategy::StrategyConfig;
 use std::collections::HashMap;
@@ -29,7 +32,7 @@ pub trait Strategy<'a> {
     fn find_profitable_candidates<T: PoolTransaction>(
         &mut self,
         pending_txs: Vec<T>,
-        candidates: HashMap<Address, Vec<Vec<Self::Action>>>
+        candidates: HashMap<Address, Vec<Vec<Self::Action>>>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error>;
 
     /// Gey Vault Address
@@ -42,7 +45,7 @@ pub trait Strategy<'a> {
     /// states.
     fn collect_clean_states(
         result_states: &EvmState,
-        dirty_states: &DirtyStates
+        dirty_states: &DirtyStates,
     ) -> Option<Vec<AccessListItem>> {
         let mut clean_states = Vec::<AccessListItem>::new();
         for (address, account) in result_states.iter() {
@@ -50,23 +53,15 @@ pub trait Strategy<'a> {
                 if !account.is_touched() {
                     continue;
                 }
-                if account.storage.keys().any(|key| { dirty_storage.contains(key) }) {
+                if account.storage.keys().any(|key| dirty_storage.contains(key)) {
                     return None;
                 }
-                let clean_storage_keys: Vec<FixedBytes<32>> = account.storage
-                    .keys()
-                    .map(|key| FixedBytes::<32>::from(*key))
-                    .collect();
-                clean_states.push(AccessListItem {
-                    address: *address,
-                    storage_keys: clean_storage_keys,
-                });
+                let clean_storage_keys: Vec<FixedBytes<32>> =
+                    account.storage.keys().map(|key| FixedBytes::<32>::from(*key)).collect();
+                clean_states
+                    .push(AccessListItem { address: *address, storage_keys: clean_storage_keys });
             }
         }
-        if clean_states.is_empty() {
-            None
-        } else {
-            Some(clean_states)
-        }
+        if clean_states.is_empty() { None } else { Some(clean_states) }
     }
 }
