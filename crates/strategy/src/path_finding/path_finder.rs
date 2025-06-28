@@ -10,7 +10,7 @@ use reth_revm::{
     db::CacheDB,
     handler::{ instructions::EthInstructions, EthPrecompiles },
     interpreter::interpreter::EthInterpreter,
-    state::{ AccountInfo, Bytecode },
+    state::{ AccountInfo, Bytecode, EvmStorageSlot },
     Context,
     MainBuilder,
     MainContext,
@@ -125,13 +125,21 @@ impl<'a, StrategyDatabase> Strategy<'a>
                 let to = tx.to()?;
                 let data = tx.input().clone();
                 let result = pevm.lock().unwrap().transact_system_call(data, to).unwrap();
-                let mut dirty_state = HashMap::<Address, HashSet<U256>>::new();
-                for (address, account) in result.state.iter() {
-                    if account.is_touched() {
-                        let storage_keys: HashSet<U256> = account.storage.keys().cloned().collect();
-                        dirty_state.entry(*address).or_default().extend(storage_keys);
-                    }
-                }
+                let dirty_state: HashMap<Address, HashSet<U256>> = result.state
+                    .iter()
+                    .filter(|(_, account)| account.is_touched())
+                    .fold(HashMap::new(), |mut acc, (address, account)| {
+                        let changed_storage_keys: HashSet<U256> = account.storage
+                            .iter()
+                            .filter(|(_, storage_slot)| storage_slot.is_changed())
+                            .map(|(key, _)| *key)
+                            .collect();
+
+                        if !changed_storage_keys.is_empty() {
+                            acc.entry(*address).or_default().extend(changed_storage_keys);
+                        }
+                        acc
+                    });
                 Some(dirty_state)
             })
             .reduce_with(|mut acc, dirty_state| {
