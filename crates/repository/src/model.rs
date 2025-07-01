@@ -1,24 +1,6 @@
 use crate::schema::*;
 use diesel::prelude::*;
 
-#[derive(Debug, Clone, Queryable, Identifiable)]
-#[diesel(primary_key(chain_id, address, priority))]
-#[diesel(table_name = token)]
-pub struct Token {
-    pub chain_id: i32,
-    pub address: String,
-    pub priority: i32,
-}
-
-#[derive(Debug, Clone, Queryable, Identifiable)]
-#[diesel(primary_key(chain_id, address, dex_type))]
-#[diesel(table_name = dex)]
-pub struct Dex {
-    pub chain_id: i32,
-    pub address: String,
-    pub dex_type: i32,
-}
-
 #[repr(i32)]
 #[derive(Debug, Clone, Copy)]
 pub enum HopType {
