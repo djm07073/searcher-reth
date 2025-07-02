@@ -1,85 +1,66 @@
 pub mod model;
-mod schema;
 mod types;
 
-use diesel::{prelude::*, sqlite::SqliteConnection};
-use model::{Hop as HopModel, HopType};
+use eyre::{eyre, Result};
+use model::{Hop as HopModel, Routes};
 use reth_revm::primitives::Address;
 use searcher_reth_strategy::{Hop, core::candidate::CandidatesResult};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
 
 impl From<HopModel> for Hop {
     fn from(val: HopModel) -> Self {
         Hop {
-            dexType: val.dex_type as u8,
+            dexType: val.dex_type,
             dex: val.address.parse::<Address>().unwrap(),
             srcToken: val.src_token.parse::<Address>().unwrap(),
             dstToken: val.dst_token.parse::<Address>().unwrap(),
-            metadata: val.metadata.into_bytes().into(),
+            metadata: hex::decode(&val.metadata.trim_start_matches("0x")).unwrap().into(),
         }
     }
 }
 
 pub struct SearcherRepository {
-    database_url: String,
+    routes: Routes,
 }
 
 impl SearcherRepository {
-    pub fn new(database_url: &str) -> Self {
-        Self { database_url: database_url.into() }
+    pub fn new(json_path: &str) -> Result<Self> {
+        let path = Path::new(json_path);
+        if !path.exists() {
+            return Err(eyre!("Routes JSON file not found at: {}", json_path));
+        }
+
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let routes: Routes = serde_json::from_reader(reader)
+            .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
+
+        Ok(Self { routes })
     }
 
-    pub fn get_candidates(&self, id: u64) -> CandidatesResult<Hop> {
-        use schema::hop::dsl::*;
-
-        let mut conn = SqliteConnection::establish(&self.database_url)?;
-
-        let start_hops: Vec<HopModel> = hop
-            .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::Start as i32))
-            .load(&mut conn)?;
-
-        let inter_hops: Vec<HopModel> = hop
-            .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::Inter as i32))
-            .load(&mut conn)?;
-
-        let end_hops: Vec<HopModel> = hop
-            .filter(chain_id.eq(id as i32))
-            .filter(hop_type.eq(HopType::End as i32))
-            .load(&mut conn)?;
-
+    pub fn get_candidates(&self, _chain_id: u64) -> CandidatesResult<Hop> {
         let mut path_map: HashMap<Address, Vec<Vec<Hop>>> = HashMap::new();
 
-        for start in &start_hops {
-            let start_token: Address = start.src_token.parse().unwrap();
-            let mut paths = Vec::new();
-
-            // 2-hop paths
-            for end in &end_hops {
-                if start.dst_token == end.src_token {
-                    paths.push(vec![start.clone().into(), end.clone().into()]);
-                }
+        for route in &self.routes {
+            if route.is_empty() {
+                continue;
             }
 
-            // 3-hop paths
-            for inter in &inter_hops {
-                if start.dst_token == inter.src_token {
-                    for end in &end_hops {
-                        if inter.dst_token == end.src_token {
-                            paths.push(vec![
-                                start.clone().into(),
-                                inter.clone().into(),
-                                end.clone().into(),
-                            ]);
-                        }
-                    }
-                }
-            }
+            // Get the starting token from the first hop
+            let start_token: Address = route[0].src_token.parse().unwrap();
+            
+            // Convert route to Hop vec
+            let hop_route: Vec<Hop> = route.iter()
+                .map(|hop| hop.clone().into())
+                .collect();
 
-            if !paths.is_empty() {
-                path_map.insert(start_token, paths);
-            }
+            // Group by starting token
+            path_map.entry(start_token)
+                .or_insert_with(Vec::new)
+                .push(hop_route);
         }
 
         Ok(path_map)

@@ -20,7 +20,7 @@ fn main() -> eyre::Result<()> {
     let _logger = logger::init(SERVICE_NAME).map_err(|e| eyre!("Logger init failed: {}", e))?;
     let config: SearcherConfig = Config::from_file("env.toml")?;
     let wallet = config.relayer.get_wallet().unwrap();
-    let repository = Arc::new(SearcherRepository::new(config.database.path.to_str().unwrap()));
+    let repository = Arc::new(SearcherRepository::new(config.database.path.to_str().unwrap()).unwrap());
 
     reth::cli::Cli::<EthereumChainSpecParser>::parse().run(|builder, _| async move {
         // Spawn signal manager to handle signals

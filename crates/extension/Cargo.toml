@@ -38,7 +38,6 @@ tokio.workspace = true
 # misc
 eyre.workspace = true
 once_cell.workspace = true
-rusqlite = { workspace = true, features = ["bundled"] }
 serde_json.workspace = true
 serde.workspace = true
 
