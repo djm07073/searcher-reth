@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 
 use alloy_eips::Encodable2718;

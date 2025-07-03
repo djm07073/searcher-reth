@@ -1,4 +1,7 @@
-use std::{future::Future, sync::{Arc, RwLock}};
+use std::{
+    future::Future,
+    sync::{Arc, RwLock},
+};
 
 use alloy_consensus::BlockHeader;
 use alloy_network::EthereumWallet;
@@ -9,16 +12,15 @@ use reth::network::NetworkInfo;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
-    BlockHashReader,
-    DatabaseProviderFactory,
-    LatestStateProviderRef,
-    StateCommitmentProvider,
+    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
-use searcher_reth_strategy::config::{manager::ConfigManager, strategy::CommonStrategyConfig};
-use searcher_reth_strategy::core::strategy::Strategy;
-use searcher_reth_strategy::path_finding::PathFinder;
+use searcher_reth_strategy::{
+    config::{manager::ConfigManager, strategy::CommonStrategyConfig},
+    core::strategy::Strategy,
+    path_finding::PathFinder,
+};
 use searcher_reth_util::SignalType;
 use tokio::sync::broadcast;
 
@@ -35,7 +37,7 @@ impl SearcherExEx {
     pub fn new(
         wallet: (EthereumWallet, Vec<Address>),
         signal_rx: broadcast::Receiver<SignalType>,
-        config: Arc<RwLock<ConfigManager>>
+        config: Arc<RwLock<ConfigManager>>,
     ) -> Self {
         Self { wallet, signal_rx, config }
     }
@@ -43,14 +45,13 @@ impl SearcherExEx {
     pub async fn exex<Node>(
         self,
         exex_id: &str,
-        mut ctx: ExExContext<Node>
-    )
-        -> Result<impl Future<Output = Result<()>>>
-        where
-            Node: FullNodeComponents,
-            Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
-            <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider: BlockHashReader +
-                StateCommitmentProvider
+        mut ctx: ExExContext<Node>,
+    ) -> Result<impl Future<Output = Result<()>>>
+    where
+        Node: FullNodeComponents,
+        Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
+        <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
+            BlockHashReader + StateCommitmentProvider,
     {
         let wallet = self.wallet.clone();
         let signal_rx = self.signal_rx.resubscribe();
@@ -59,9 +60,8 @@ impl SearcherExEx {
         let strategy = config.read().unwrap().get_strategy(exex_id)?;
         let vault = strategy.get_vault().clone();
         Ok(async move {
-            let relayer_pool = Arc::new(
-                RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?
-            );
+            let relayer_pool =
+                Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
             let relayer_tx = relayer_pool.start().await?;
             tracing::info!(
                 target: "reth-exex",
@@ -90,7 +90,8 @@ impl SearcherExEx {
                     let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
                     // 2. Get the pending transactions from the transaction pool
-                    let pending_txs = ctx.components
+                    let pending_txs = ctx
+                        .components
                         .pool()
                         .pending_transactions()
                         .iter()
@@ -101,10 +102,8 @@ impl SearcherExEx {
                     // transactions
                     path_finder.set_last_state(latest_state_provider);
                     let candidates = config.write().unwrap().get_candidates(chain_id)?;
-                    let profitable_candidates = path_finder.find_profitable_candidates(
-                        pending_txs,
-                        candidates.clone()
-                    )?;
+                    let profitable_candidates =
+                        path_finder.find_profitable_candidates(pending_txs, candidates.clone())?;
 
                     if profitable_candidates.is_none() {
                         tracing::info!(
@@ -126,15 +125,13 @@ impl SearcherExEx {
                         let r = relayer_channel.send(message).await;
 
                         match r {
-                            Ok(_) =>
-                                tracing::info!(
+                            Ok(_) => tracing::info!(
                                 target: "reth-exex",
                                 action = "send_candidates_to_relayer_pool",
                                 height = block_num,
                                 "Successfully sent candidates to relayer pool"
                             ),
-                            Err(e) =>
-                                tracing::error!(
+                            Err(e) => tracing::error!(
                                 target: "reth-exex",
                                 action = "send_candidates_to_relayer_pool",
                                 error = ?e,

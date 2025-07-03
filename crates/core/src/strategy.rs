@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use alloy_primitives::{address, Address, FixedBytes, U256};
+use alloy_primitives::{Address, FixedBytes, U256, address};
 use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
 use eyre::Error;
