@@ -1,6 +1,7 @@
 use alloy_sol_types::sol;
 
 sol! {
+    // basic elements of the path finding contract
     #[derive(Debug)]
     struct Hop {
         uint8 dexType;
@@ -10,9 +11,12 @@ sol! {
         bytes metadata; // Additional metadata for the hop ex. Balancer
     }
 
-    function getProfit(uint256 initialAmt, Hop[] memory route) view external returns (uint256 profit);
+    // Calculate the profit for a given route
+    function getProfit(uint256 amount, Hop[] memory route) view external returns (uint256 profit);
 
+    // Execute a route and return the profit
     function execute(
+        uint256[] memory amounts,
         Hop[][] memory routes
     ) external returns (uint256 profit);
 }
