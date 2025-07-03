@@ -1,26 +1,30 @@
-use alloy_primitives::{ map::HashSet, Address, B256, U256 };
-use alloy_rpc_types::{ AccessList, AccessListItem };
-use alloy_sol_types::{ SolCall, SolValue };
-use eyre::{ Error, Ok, Result };
-use rayon::iter::{ IntoParallelRefIterator, ParallelIterator };
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
+use std::{
+    collections::HashMap,
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+};
+
+use alloy_primitives::{map::HashSet, Address, B256, U256};
+use alloy_rpc_types::{AccessList, AccessListItem};
+use alloy_sol_types::{SolCall, SolValue};
+use eyre::{Error, Ok, Result};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
-    Context,
-    MainBuilder,
-    MainContext,
-    SystemCallEvm,
-    context::{ BlockEnv, CfgEnv, Evm, TxEnv, result::{ ExecutionResult, Output, ResultAndState } },
+    context::{
+        result::{ExecutionResult, Output, ResultAndState},
+        BlockEnv, CfgEnv, Evm, TxEnv,
+    },
     database::StateProviderDatabase,
     db::CacheDB,
-    handler::{ EthPrecompiles, instructions::EthInstructions },
+    handler::{instructions::EthInstructions, EthPrecompiles},
     interpreter::interpreter::EthInterpreter,
-    state::{ AccountInfo, Bytecode },
+    state::{AccountInfo, Bytecode},
+    Context, MainBuilder, MainContext, SystemCallEvm,
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::{ strategy::{ CommonStrategyConfig, StrategyConfig }, types::Candidate };
-use searcher_reth_core::strategy::{ STRATEGY_CONTRACT_ADDRESS, Strategy };
-use std::{ collections::HashMap, sync::{ Arc, Mutex, atomic::{ AtomicBool, Ordering } } };
+use searcher_reth_config::{strategy::{CommonStrategyConfig, StrategyConfig}, types::Candidate};
+use searcher_reth_core::strategy::{Strategy, STRATEGY_CONTRACT_ADDRESS};
 
 use crate::path_finding::types::executeCall;
 

@@ -1,6 +1,6 @@
 use std::sync::{
-    Arc,
     atomic::{AtomicU64, AtomicUsize, Ordering},
+    Arc,
 };
 
 use alloy_network::EthereumWallet;

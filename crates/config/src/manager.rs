@@ -1,19 +1,18 @@
-use alloy_network::EthereumWallet;
-use alloy_primitives::{ hex, Address };
-use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
-
-use eyre::{ eyre, Result };
-
-use serde::{ Deserialize, Serialize };
 use std::{
     collections::HashMap,
     fs::File,
     io::BufReader,
     path::PathBuf,
-    sync::{ atomic::{ AtomicBool, Ordering }, Arc },
+    sync::{atomic::{AtomicBool, Ordering}, Arc},
 };
 
-use crate::{ strategy::StrategyConfig, types::{ Candidate, Route, RoutesMap } };
+use alloy_network::EthereumWallet;
+use alloy_primitives::{hex, Address};
+use alloy_signer_local::{coins_bip39::English, MnemonicBuilder};
+use eyre::{eyre, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::{strategy::StrategyConfig, types::{Candidate, Route, RoutesMap}};
 
 pub struct ConfigManager {
     // configuration from the file

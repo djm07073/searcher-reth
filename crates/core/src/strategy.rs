@@ -1,8 +1,9 @@
-use alloy_primitives::{Address, FixedBytes, U256, address};
+use std::collections::HashMap;
+
+use alloy_primitives::{address, Address, FixedBytes, U256};
 use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
 use eyre::Error;
-
 use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
     primitives::HashSet,
@@ -10,7 +11,6 @@ use reth_revm::{
 };
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_config::{strategy::StrategyConfig, types::Candidate};
-use std::collections::HashMap;
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 

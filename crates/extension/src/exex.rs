@@ -1,17 +1,13 @@
+use std::{future::Future, sync::{Arc, RwLock}};
+
 use alloy_consensus::BlockHeader;
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 use eyre::Result;
 use futures_util::StreamExt;
 use reth::network::NetworkInfo;
-use searcher_reth_strategy::config::{ strategy::CommonStrategyConfig, manager::ConfigManager };
-use searcher_reth_util::SignalType;
-use searcher_reth_strategy::core::strategy::Strategy;
-use searcher_reth_strategy::path_finding::PathFinder;
-use std::{ future::Future, sync::{ Arc, RwLock } };
-
-use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
-use reth_node_api::{ FullNodeComponents, FullNodeTypes };
+use reth_exex::{ExExContext, ExExEvent, ExExNotification};
+use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
     BlockHashReader,
     DatabaseProviderFactory,
@@ -19,10 +15,14 @@ use reth_provider::{
     StateCommitmentProvider,
 };
 use reth_tracing::tracing;
-use reth_transaction_pool::{ EthPooledTransaction, TransactionPool };
+use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
+use searcher_reth_strategy::config::{manager::ConfigManager, strategy::CommonStrategyConfig};
+use searcher_reth_strategy::core::strategy::Strategy;
+use searcher_reth_strategy::path_finding::PathFinder;
+use searcher_reth_util::SignalType;
 use tokio::sync::broadcast;
 
-use crate::relayer_pool::{ RelayerMessage, RelayerPool };
+use crate::relayer_pool::{RelayerMessage, RelayerPool};
 
 pub struct SearcherExEx {
     pub wallet: (EthereumWallet, Vec<Address>),
