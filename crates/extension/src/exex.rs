@@ -58,7 +58,7 @@ impl SearcherExEx {
         let mut signal_rx_config = self.signal_rx.resubscribe();
         let config = self.config.clone();
         let strategy = config.read().unwrap().get_strategy(exex_id)?;
-        let vault = strategy.get_vault().clone();
+        let vault = strategy.get_vault();
         Ok(async move {
             let relayer_pool =
                 Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
