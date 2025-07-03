@@ -13,7 +13,6 @@ publish = false
 searcher-reth = { path = "bin/searcher-reth" }
 searcher-reth-core = { path = "crates/core" }
 searcher-reth-extension = { path = "crates/extension" }
-searcher-reth-repository = { path = "crates/repository" }
 searcher-reth-util = { path = "crates/util" }
 searcher-reth-config = { path = "crates/config" }
 searcher-reth-strategy = { path = "crates/strategy" }

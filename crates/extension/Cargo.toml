@@ -44,16 +44,11 @@ serde.workspace = true
 jsonrpsee.workspace = true
 revm.workspace = true
 clap.workspace = true
-searcher-reth-repository.workspace = true
+
+searcher-reth-strategy.workspace = true
 searcher-reth-util.workspace = true
 
 itertools.workspace = true
 rayon.workspace = true
 reth-transaction-pool.workspace = true
 toml.workspace = true
-
-
-[dev-dependencies]
-reth-testing-utils.workspace = true
-secp256k1.workspace = true
-reth-transaction-pool = { workspace = true, features = ["test-utils"] }

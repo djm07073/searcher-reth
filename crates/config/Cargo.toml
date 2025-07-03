@@ -13,3 +13,4 @@ alloy-signer-local.workspace = true
 alloy-primitives.workspace = true
 
 reth-revm.workspace = true
+serde_json.workspace = true

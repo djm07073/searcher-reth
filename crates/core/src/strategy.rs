@@ -9,7 +9,7 @@ use reth_revm::{
     state::{Bytecode, EvmState},
 };
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::strategy::StrategyConfig;
+use searcher_reth_config::{strategy::StrategyConfig, types::Candidate};
 use std::collections::HashMap;
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
@@ -32,14 +32,8 @@ pub trait Strategy<'a> {
     fn find_profitable_candidates<T: PoolTransaction>(
         &mut self,
         pending_txs: Vec<T>,
-        candidates: HashMap<Address, Vec<Vec<Self::Action>>>,
+        candidates: Vec<Candidate>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error>;
-
-    /// Gey Vault Address
-    fn get_vault(&self) -> Address;
-
-    /// Get vault balance for the given token address.
-    fn get_vault_balance(&mut self, token: Address) -> U256;
 
     /// Check if the result state has any dirty state if yes return None or not return the clean
     /// states.
