@@ -18,7 +18,6 @@ use reth_primitives::{Recovered, TransactionSigned};
 use reth_provider::AccountReader;
 use reth_tracing::tracing;
 use reth_transaction_pool::EthPooledTransaction;
-
 use searcher_reth_util::SignalType;
 use tokio::sync::{
     broadcast,

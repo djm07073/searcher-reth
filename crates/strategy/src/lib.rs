@@ -1,7 +1,5 @@
-mod path_finding;
+pub mod path_finding;
 // TODO: Add other strategy modules as needed
-
-pub use path_finding::{Hop, PathFinder};
 
 // re-export modules
 pub mod config {

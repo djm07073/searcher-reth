@@ -16,6 +16,7 @@ pub enum StrategyConfig {
 pub trait CommonStrategyConfig {
     fn get_exex_id(&self) -> &'static str;
     fn get_vault(&self) -> Address;
+    fn get_max_liquidity(&self) -> U256;
     fn get_contract(&self) -> Bytecode;
     fn get_profit_ratios(&self) -> (U256, U256);
 }
@@ -29,6 +30,15 @@ impl CommonStrategyConfig for StrategyConfig {
             // TODO: Add other strategy configurations
         }
     }
+
+    fn get_max_liquidity(&self) -> U256 {
+        match self {
+            StrategyConfig::PathFinder(config) => {
+                U256::from(config.max_liquidity.parse::<u128>().unwrap() * ONE_ETHER)
+            }
+        }
+    }
+
     fn get_vault(&self) -> Address {
         match self {
             StrategyConfig::PathFinder(config) => config.vault.parse().unwrap(),
@@ -68,6 +78,8 @@ impl CommonStrategyConfig for StrategyConfig {
 pub struct PathFinderConfig {
     pub vault: String,
     pub contract: String,
+    pub max_liquidity: String, /* Maximum liquidity to use for path finding ex. 1000 *
+                                * 1ether(1000 USDC) */
     pub max_profit_ratio: String,
     pub min_profit_ratio: String,
 }
@@ -83,6 +95,7 @@ mod tests {
         let cfg = PathFinderConfig {
             vault: "0x0000000000000000000000000000000000000000".to_string(),
             contract: "00".to_string(),
+            max_liquidity: "1000000000".to_string(), // 1000 USDC
             max_profit_ratio: "0.005".to_string(),
             min_profit_ratio: "0.001".to_string(),
         };
