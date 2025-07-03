@@ -4,7 +4,10 @@ use alloy_primitives::{ Address, B256, U256, map::HashSet };
 use alloy_rpc_types::{ AccessList, AccessListItem };
 use alloy_sol_types::{ SolCall, SolValue };
 use eyre::{ Error, Ok, Result };
-use rayon::iter::{ IntoParallelRefIterator, ParallelIterator };
+use rayon::{
+    iter::{ IntoParallelRefIterator, ParallelIterator },
+    join,
+};
 use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{
     Context,
@@ -42,6 +45,7 @@ type PathFinderEvm<'a, DB> = Evm<
 >;
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
+const MAX_SEARCH_DEPTH: usize = 20;
 
 pub struct PathFinder<'a, StrategyDatabase>
     where StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider {
@@ -132,7 +136,7 @@ impl<'a, StrategyDatabase> Strategy<'a>
 
         // 2. Filter candidates based on vault balances and profit ratios
         let (max_profit_ratio, min_profit_ratio) = self.profit_ratio_range;
-        let (max_liquidity, min_liquidity) = self.liquidity_range;
+        let (min_liquidity, max_liquidity) = self.liquidity_range;
         let found_max_profit = Arc::new(AtomicBool::new(false));
 
         let result = candidates
@@ -142,12 +146,6 @@ impl<'a, StrategyDatabase> Strategy<'a>
             .fold(
                 || (Vec::new(), HashMap::<Address, Vec<B256>>::new()),
                 |mut acc, candidate: &Candidate| {
-                    if found_max_profit.load(Ordering::Relaxed) {
-                        return acc;
-                    }
-                    // TODO(@junha-ahn): searching algorithm to get optimized balance range in
-                    // 0..max_liquidity
-                    let balance = todo!("Implement balance optimization logic");
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
@@ -169,9 +167,19 @@ impl<'a, StrategyDatabase> Strategy<'a>
                         }
                     }
 
+                    let balance = Self::search_optimal_balance(
+                        &pevm,
+                        &hops,
+                        min_liquidity,
+                        max_liquidity,
+                    );
+                    if found_max_profit.load(Ordering::Relaxed) {
+                        return acc;
+                    }
+
                     let encoded_data = (getProfitCall {
                         amount: balance,
-                        route: hops,
+                        route: hops.clone(),
                     }).abi_encode();
 
                     let element: Option<(Vec<Hop>, Vec<AccessListItem>)> = {
@@ -275,5 +283,65 @@ impl<'a, StrategyDatabase> Strategy<'a>
             });
 
         Ok(result)
+    }
+}
+
+impl<'a, StrategyDatabase> PathFinder<'a, StrategyDatabase>
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
+{
+    fn evaluate_profit(
+        pevm: &Arc<Mutex<PathFinderEvm<'a, StrategyDatabase>>>,
+        hops: &[Hop],
+        amount: U256,
+    ) -> U256 {
+        let encoded = (getProfitCall { amount, route: hops.to_vec() }).abi_encode();
+        let mut evm = pevm.lock().unwrap();
+        let ResultAndState { result, .. } = evm
+            .transact_system_call(encoded.into(), STRATEGY_CONTRACT_ADDRESS)
+            .unwrap();
+        match result {
+            ExecutionResult::Success { output: Output::Call(value), .. } => {
+                <U256>::abi_decode(&value).unwrap_or_default()
+            }
+            _ => U256::ZERO,
+        }
+    }
+
+    fn search_optimal_balance(
+        pevm: &Arc<Mutex<PathFinderEvm<'a, StrategyDatabase>>>,
+        hops: &[Hop],
+        min_liquidity: U256,
+        max_liquidity: U256,
+    ) -> U256 {
+        let mut left = min_liquidity;
+        let mut right = max_liquidity;
+
+        for _ in 0..MAX_SEARCH_DEPTH {
+            if right <= left + U256::from(1u8) {
+                break;
+            }
+
+            let diff = right - left;
+            let one_third = diff / U256::from(3u8);
+            let mid1 = left + one_third;
+            let mid2 = right - one_third;
+
+            let (profit1, profit2) = join(
+                || Self::evaluate_profit(pevm, hops, mid1),
+                || Self::evaluate_profit(pevm, hops, mid2),
+            );
+
+            if profit1 < profit2 {
+                left = mid1;
+            } else {
+                right = mid2;
+            }
+        }
+
+        let profit_left = Self::evaluate_profit(pevm, hops, left);
+        let profit_right = Self::evaluate_profit(pevm, hops, right);
+
+        if profit_left >= profit_right { left } else { right }
     }
 }
