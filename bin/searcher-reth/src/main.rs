@@ -1,3 +1,8 @@
+use std::{
+    str,
+    sync::{Arc, RwLock},
+};
+
 use clap::Parser;
 use eyre::eyre;
 use reth::chainspec::EthereumChainSpecParser;
@@ -5,11 +10,9 @@ use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
     exex::SearcherExEx,
-    strategy::config::{ strategy::PATH_FINDER_EXEX_ID, manager::ConfigManager },
-    util::{ logger, signal_manager::SignalManager },
+    strategy::config::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID},
+    util::{logger, signal_manager::SignalManager},
 };
-
-use std::{ str, sync::{ Arc, RwLock } };
 
 const SERVICE_NAME: &str = "searcher-reth";
 

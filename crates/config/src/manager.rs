@@ -1,19 +1,24 @@
-use alloy_network::EthereumWallet;
-use alloy_primitives::{ hex, Address };
-use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
-
-use eyre::{ eyre, Result };
-
-use serde::{ Deserialize, Serialize };
 use std::{
     collections::HashMap,
     fs::File,
     io::BufReader,
     path::PathBuf,
-    sync::{ atomic::{ AtomicBool, Ordering }, Arc },
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
-use crate::{ strategy::StrategyConfig, types::{ Candidate, Route, RoutesMap } };
+use alloy_network::EthereumWallet;
+use alloy_primitives::{hex, Address};
+use alloy_signer_local::{coins_bip39::English, MnemonicBuilder};
+use eyre::{eyre, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    strategy::StrategyConfig,
+    types::{Candidate, Route, RoutesMap},
+};
 
 pub struct ConfigManager {
     // configuration from the file
@@ -41,16 +46,15 @@ impl ConfigManager {
     }
 
     pub fn get_strategy(&self, exex_id: &str) -> eyre::Result<StrategyConfig> {
-        self.config.strategies
+        self.config
+            .strategies
             .get(exex_id)
             .cloned()
             .ok_or_else(|| eyre::eyre!("Strategy not found for exex_id: {}", exex_id))
     }
 
     pub fn get_candidates(&mut self, chain_id: u64) -> eyre::Result<Vec<Candidate>> {
-        let candidates = if
-            self.candidates.is_none() ||
-            self.config_changed.load(Ordering::Relaxed)
+        let candidates = if self.candidates.is_none() || self.config_changed.load(Ordering::Relaxed)
         {
             self.config_changed.store(false, Ordering::Relaxed);
             let candidates = self.config.data.get_candidates(chain_id)?;
@@ -99,8 +103,7 @@ impl TxRelayerConfig {
         let mut wallet = EthereumWallet::default();
         let mut addresses = Vec::new();
         for i in 0..10 {
-            let signer = MnemonicBuilder::<English>
-                ::default()
+            let signer = MnemonicBuilder::<English>::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;
@@ -124,8 +127,7 @@ impl DataConfig {
         }
 
         let file = File::open(&self.path)?;
-        let routes_data: RoutesMap = serde_json
-            ::from_reader(BufReader::new(file))
+        let routes_data: RoutesMap = serde_json::from_reader(BufReader::new(file))
             .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
 
         let chain_routes = routes_data
@@ -136,9 +138,8 @@ impl DataConfig {
     }
 
     fn build_all_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
-        let token_map: HashMap<_, _> = chain_routes.elements
-            .iter()
-            .fold(HashMap::new(), |mut acc, element| {
+        let token_map: HashMap<_, _> =
+            chain_routes.elements.iter().fold(HashMap::new(), |mut acc, element| {
                 acc.entry(&element.src_token).or_insert_with(Vec::new).push(element);
                 acc
             });
@@ -185,8 +186,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    const CONFIG_V1: &str =
-        r#"
+    const CONFIG_V1: &str = r#"
         [relayer]
         mnemonic = "mnemonic1"
 
@@ -205,8 +205,7 @@ mod tests {
         min_profit_ratio = "0.001"
     "#;
 
-    const CONFIG_V2: &str =
-        r#"
+    const CONFIG_V2: &str = r#"
         [relayer]
         mnemonic = "mnemonic2"
 
