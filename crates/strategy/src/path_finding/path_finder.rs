@@ -167,12 +167,117 @@ impl<'a, StrategyDatabase> Strategy<'a>
                         }
                     }
 
-                    let balance = Self::search_optimal_balance(
-                        &pevm,
-                        &hops,
-                        min_liquidity,
-                        max_liquidity,
+                    let mut left = min_liquidity;
+                    let mut right = max_liquidity;
+
+                    for _ in 0..MAX_SEARCH_DEPTH {
+                        if right <= left + U256::from(1u8) {
+                            break;
+                        }
+
+                        let diff = right - left;
+                        let one_third = diff / U256::from(3u8);
+                        let mid1 = left + one_third;
+                        let mid2 = right - one_third;
+
+                        let (profit1, profit2) = join(
+                            || {
+                                let encoded = (getProfitCall {
+                                    amount: mid1,
+                                    route: hops.clone(),
+                                })
+                                    .abi_encode();
+                                let mut evm = pevm.lock().unwrap();
+                                let ResultAndState { result, .. } = evm
+                                    .transact_system_call(
+                                        encoded.into(),
+                                        STRATEGY_CONTRACT_ADDRESS,
+                                    )
+                                    .unwrap();
+                                match result {
+                                    ExecutionResult::Success {
+                                        output: Output::Call(value),
+                                        ..
+                                    } => <U256>::abi_decode(&value).unwrap_or_default(),
+                                    _ => U256::ZERO,
+                                }
+                            },
+                            || {
+                                let encoded = (getProfitCall {
+                                    amount: mid2,
+                                    route: hops.clone(),
+                                })
+                                    .abi_encode();
+                                let mut evm = pevm.lock().unwrap();
+                                let ResultAndState { result, .. } = evm
+                                    .transact_system_call(
+                                        encoded.into(),
+                                        STRATEGY_CONTRACT_ADDRESS,
+                                    )
+                                    .unwrap();
+                                match result {
+                                    ExecutionResult::Success {
+                                        output: Output::Call(value),
+                                        ..
+                                    } => <U256>::abi_decode(&value).unwrap_or_default(),
+                                    _ => U256::ZERO,
+                                }
+                            },
+                        );
+
+                        if profit1 < profit2 {
+                            left = mid1;
+                        } else {
+                            right = mid2;
+                        }
+                    }
+
+                    let (profit_left, profit_right) = join(
+                        || {
+                            let encoded = (getProfitCall {
+                                amount: left,
+                                route: hops.clone(),
+                            })
+                                .abi_encode();
+                            let mut evm = pevm.lock().unwrap();
+                            let ResultAndState { result, .. } = evm
+                                .transact_system_call(
+                                    encoded.into(),
+                                    STRATEGY_CONTRACT_ADDRESS,
+                                )
+                                .unwrap();
+                            match result {
+                                ExecutionResult::Success {
+                                    output: Output::Call(value),
+                                    ..
+                                } => <U256>::abi_decode(&value).unwrap_or_default(),
+                                _ => U256::ZERO,
+                            }
+                        },
+                        || {
+                            let encoded = (getProfitCall {
+                                amount: right,
+                                route: hops.clone(),
+                            })
+                                .abi_encode();
+                            let mut evm = pevm.lock().unwrap();
+                            let ResultAndState { result, .. } = evm
+                                .transact_system_call(
+                                    encoded.into(),
+                                    STRATEGY_CONTRACT_ADDRESS,
+                                )
+                                .unwrap();
+                            match result {
+                                ExecutionResult::Success {
+                                    output: Output::Call(value),
+                                    ..
+                                } => <U256>::abi_decode(&value).unwrap_or_default(),
+                                _ => U256::ZERO,
+                            }
+                        },
                     );
+
+                    let balance = if profit_left >= profit_right { left } else { right };
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
@@ -286,62 +391,3 @@ impl<'a, StrategyDatabase> Strategy<'a>
     }
 }
 
-impl<'a, StrategyDatabase> PathFinder<'a, StrategyDatabase>
-where
-    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
-    fn evaluate_profit(
-        pevm: &Arc<Mutex<PathFinderEvm<'a, StrategyDatabase>>>,
-        hops: &[Hop],
-        amount: U256,
-    ) -> U256 {
-        let encoded = (getProfitCall { amount, route: hops.to_vec() }).abi_encode();
-        let mut evm = pevm.lock().unwrap();
-        let ResultAndState { result, .. } = evm
-            .transact_system_call(encoded.into(), STRATEGY_CONTRACT_ADDRESS)
-            .unwrap();
-        match result {
-            ExecutionResult::Success { output: Output::Call(value), .. } => {
-                <U256>::abi_decode(&value).unwrap_or_default()
-            }
-            _ => U256::ZERO,
-        }
-    }
-
-    fn search_optimal_balance(
-        pevm: &Arc<Mutex<PathFinderEvm<'a, StrategyDatabase>>>,
-        hops: &[Hop],
-        min_liquidity: U256,
-        max_liquidity: U256,
-    ) -> U256 {
-        let mut left = min_liquidity;
-        let mut right = max_liquidity;
-
-        for _ in 0..MAX_SEARCH_DEPTH {
-            if right <= left + U256::from(1u8) {
-                break;
-            }
-
-            let diff = right - left;
-            let one_third = diff / U256::from(3u8);
-            let mid1 = left + one_third;
-            let mid2 = right - one_third;
-
-            let (profit1, profit2) = join(
-                || Self::evaluate_profit(pevm, hops, mid1),
-                || Self::evaluate_profit(pevm, hops, mid2),
-            );
-
-            if profit1 < profit2 {
-                left = mid1;
-            } else {
-                right = mid2;
-            }
-        }
-
-        let profit_left = Self::evaluate_profit(pevm, hops, left);
-        let profit_right = Self::evaluate_profit(pevm, hops, right);
-
-        if profit_left >= profit_right { left } else { right }
-    }
-}
