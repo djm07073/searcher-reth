@@ -12,7 +12,7 @@ use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
 use eyre::{ eyre, Result };
 use serde::{ Deserialize, Serialize };
 
-use crate::{ strategy::StrategyConfig, types::{ Candidate, Route, RoutesMap } };
+use crate::{ strategy::StrategyConfig, types::{ Candidate, Route, RouteElement, RoutesMap } };
 
 pub struct ConfigManager {
     // configuration from the file
@@ -135,10 +135,10 @@ impl DataConfig {
     }
 
     fn build_all_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
-        let token_map: HashMap<_, _> = chain_routes.elements
+        let token_map: HashMap<&String, Vec<&RouteElement>> = chain_routes.elements
             .iter()
             .fold(HashMap::new(), |mut acc, element| {
-                acc.entry(&element.src_token).or_insert_with(Vec::new).push(element);
+                acc.entry(&element.src_token).or_default().push(element);
                 acc
             });
 
@@ -204,25 +204,6 @@ mod tests {
         min_profit_ratio = "0.001"
     "#;
 
-    const CONFIG_V2: &str =
-        r#"
-        [relayer]
-        mnemonic = "mnemonic2"
-
-        [data]
-        path = "/tmp/db2.json"
-
-        [logging]
-        level = "debug"
-        file = "/tmp/log2.log"
-
-        [strategy]
-        [path-finder]
-        vault = "0x0000000000000000000000000000000000000001"
-        contract = "0x01"
-        max_profit_ratio = "0.010"
-        min_profit_ratio = "0.002"
-    "#;
 
     #[test]
     fn test_from_file_and_reload() {
