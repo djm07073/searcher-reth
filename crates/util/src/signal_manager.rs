@@ -34,6 +34,18 @@ impl SignalManager {
         self.signal_tx.subscribe()
     }
 
+    fn send_signal(&self, signal: SignalType) {
+        let _ = self.signal_tx.send(signal);
+    }
+
+    fn toggle_pause(&self, paused: &mut bool) {
+        *paused = !*paused;
+        let signal = if *paused { SignalType::Pause } else { SignalType::Resume };
+        let status = if *paused { "paused" } else { "running" };
+        self.send_signal(signal);
+        tracing::info!(event = "turn off/on", status = status);
+    }
+
     pub async fn start_signal_handling(&self) -> Result<(), eyre::Error> {
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
@@ -50,18 +62,10 @@ impl SignalManager {
         loop {
             tokio::select! {
                 _ = sigusr1.recv() => {
-                    is_paused = !is_paused;
-                    let signal_type = if is_paused { SignalType::Pause } else { SignalType::Resume };
-                    let status_str = if is_paused { "paused" } else { "running" };
-
-                    let _ = self.signal_tx.send(signal_type);
-                    tracing::info!(
-                        event = "turn off/on",
-                        status = status_str,
-                    );
+                    self.toggle_pause(&mut is_paused);
                 }
                 _ = sigusr2.recv() => {
-                    let _ = self.signal_tx.send(SignalType::Reload);
+                    self.send_signal(SignalType::Reload);
                     tracing::info!(
                         event = "reload",
                         status = "reloaded",
