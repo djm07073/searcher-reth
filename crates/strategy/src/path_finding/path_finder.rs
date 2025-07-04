@@ -181,48 +181,8 @@ impl<'a, StrategyDatabase> Strategy<'a>
                         let mid2 = right - one_third;
 
                         let (profit1, profit2) = join(
-                            || {
-                                let encoded = (getProfitCall {
-                                    amount: mid1,
-                                    route: hops.clone(),
-                                })
-                                    .abi_encode();
-                                let mut evm = pevm.lock().unwrap();
-                                let ResultAndState { result, .. } = evm
-                                    .transact_system_call(
-                                        encoded.into(),
-                                        STRATEGY_CONTRACT_ADDRESS,
-                                    )
-                                    .unwrap();
-                                match result {
-                                    ExecutionResult::Success {
-                                        output: Output::Call(value),
-                                        ..
-                                    } => <U256>::abi_decode(&value).unwrap_or_default(),
-                                    _ => U256::ZERO,
-                                }
-                            },
-                            || {
-                                let encoded = (getProfitCall {
-                                    amount: mid2,
-                                    route: hops.clone(),
-                                })
-                                    .abi_encode();
-                                let mut evm = pevm.lock().unwrap();
-                                let ResultAndState { result, .. } = evm
-                                    .transact_system_call(
-                                        encoded.into(),
-                                        STRATEGY_CONTRACT_ADDRESS,
-                                    )
-                                    .unwrap();
-                                match result {
-                                    ExecutionResult::Success {
-                                        output: Output::Call(value),
-                                        ..
-                                    } => <U256>::abi_decode(&value).unwrap_or_default(),
-                                    _ => U256::ZERO,
-                                }
-                            },
+                            || Self::call_get_profit(&pevm, mid1, hops.clone()),
+                            || Self::call_get_profit(&pevm, mid2, hops.clone()),
                         );
 
                         if profit1 < profit2 {
@@ -233,48 +193,8 @@ impl<'a, StrategyDatabase> Strategy<'a>
                     }
 
                     let (profit_left, profit_right) = join(
-                        || {
-                            let encoded = (getProfitCall {
-                                amount: left,
-                                route: hops.clone(),
-                            })
-                                .abi_encode();
-                            let mut evm = pevm.lock().unwrap();
-                            let ResultAndState { result, .. } = evm
-                                .transact_system_call(
-                                    encoded.into(),
-                                    STRATEGY_CONTRACT_ADDRESS,
-                                )
-                                .unwrap();
-                            match result {
-                                ExecutionResult::Success {
-                                    output: Output::Call(value),
-                                    ..
-                                } => <U256>::abi_decode(&value).unwrap_or_default(),
-                                _ => U256::ZERO,
-                            }
-                        },
-                        || {
-                            let encoded = (getProfitCall {
-                                amount: right,
-                                route: hops.clone(),
-                            })
-                                .abi_encode();
-                            let mut evm = pevm.lock().unwrap();
-                            let ResultAndState { result, .. } = evm
-                                .transact_system_call(
-                                    encoded.into(),
-                                    STRATEGY_CONTRACT_ADDRESS,
-                                )
-                                .unwrap();
-                            match result {
-                                ExecutionResult::Success {
-                                    output: Output::Call(value),
-                                    ..
-                                } => <U256>::abi_decode(&value).unwrap_or_default(),
-                                _ => U256::ZERO,
-                            }
-                        },
+                        || Self::call_get_profit(&pevm, left, hops.clone()),
+                        || Self::call_get_profit(&pevm, right, hops.clone()),
                     );
 
                     let balance = if profit_left >= profit_right { left } else { right };
@@ -388,6 +308,30 @@ impl<'a, StrategyDatabase> Strategy<'a>
             });
 
         Ok(result)
+    }
+}
+
+impl<'a, StrategyDatabase> PathFinder<'a, StrategyDatabase>
+where
+    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
+{
+    fn call_get_profit(
+        pevm: &Arc<Mutex<PathFinderEvm<'a, StrategyDatabase>>>,
+        amount: U256,
+        route: Vec<Hop>,
+    ) -> U256 {
+        let encoded = (getProfitCall { amount, route }).abi_encode();
+        let mut evm = pevm.lock().unwrap();
+        let ResultAndState { result, .. } = evm
+            .transact_system_call(encoded.into(), STRATEGY_CONTRACT_ADDRESS)
+            .unwrap();
+        match result {
+            ExecutionResult::Success {
+                output: Output::Call(value),
+                ..
+            } => <U256>::abi_decode(&value).unwrap_or_default(),
+            _ => U256::ZERO,
+        }
     }
 }
 
