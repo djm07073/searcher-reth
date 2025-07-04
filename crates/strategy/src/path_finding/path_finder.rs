@@ -55,6 +55,8 @@ type PathFinderEvm<'a, DB> = Evm<
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
 const MAX_SEARCH_DEPTH: usize = 20;
+const INV_GOLDEN_RATIO_NUM: u128 = 618_033_988_749_894_848;
+const INV_GOLDEN_RATIO_DEN: u128 = 1_000_000_000_000_000_000;
 
 pub struct PathFinder<'a, StrategyDatabase>
 where
@@ -192,34 +194,48 @@ where
                     let mut left = min_liquidity;
                     let mut right = max_liquidity;
 
+                    let diff = right - left;
+                    let mut mid1 = right
+                        - (diff * U256::from(INV_GOLDEN_RATIO_NUM)
+                            / U256::from(INV_GOLDEN_RATIO_DEN));
+                    let mut mid2 = left
+                        + (diff * U256::from(INV_GOLDEN_RATIO_NUM)
+                            / U256::from(INV_GOLDEN_RATIO_DEN));
+
+                    let (mut profit1, mut profit2) = join(
+                        || Self::call_get_profit(&pevm, mid1, hops.clone()),
+                        || Self::call_get_profit(&pevm, mid2, hops.clone()),
+                    );
+
                     for _ in 0..MAX_SEARCH_DEPTH {
                         if right <= left + U256::from(1u8) {
                             break;
                         }
 
-                        let diff = right - left;
-                        let one_third = diff / U256::from(3u8);
-                        let mid1 = left + one_third;
-                        let mid2 = right - one_third;
-
-                        let (profit1, profit2) = join(
-                            || Self::call_get_profit(&pevm, mid1, hops.clone()),
-                            || Self::call_get_profit(&pevm, mid2, hops.clone()),
-                        );
-
                         if profit1 < profit2 {
                             left = mid1;
+                            mid1 = mid2;
+                            profit1 = profit2;
+
+                            let diff = right - left;
+                            mid2 = left
+                                + (diff * U256::from(INV_GOLDEN_RATIO_NUM)
+                                    / U256::from(INV_GOLDEN_RATIO_DEN));
+                            profit2 = Self::call_get_profit(&pevm, mid2, hops.clone());
                         } else {
                             right = mid2;
+                            mid2 = mid1;
+                            profit2 = profit1;
+
+                            let diff = right - left;
+                            mid1 = right
+                                - (diff * U256::from(INV_GOLDEN_RATIO_NUM)
+                                    / U256::from(INV_GOLDEN_RATIO_DEN));
+                            profit1 = Self::call_get_profit(&pevm, mid1, hops.clone());
                         }
                     }
 
-                    let (profit_left, profit_right) = join(
-                        || Self::call_get_profit(&pevm, left, hops.clone()),
-                        || Self::call_get_profit(&pevm, right, hops.clone()),
-                    );
-
-                    let amount = if profit_left >= profit_right { left } else { right };
+                    let amount = if profit1 >= profit2 { mid1 } else { mid2 };
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
