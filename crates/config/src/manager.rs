@@ -83,7 +83,7 @@ pub struct SearcherConfig {
     pub relayer: TxRelayerConfig,
     pub data: DataConfig,
     pub logging: LoggingConfig,
-    #[serde(default)]
+    #[serde(default, rename = "strategy")]
     pub strategies: HashMap<ExExId, StrategyConfig>,
 }
 
@@ -197,11 +197,14 @@ mod tests {
         file = "/tmp/log1.log"
 
         [strategy]
-        [path-finder]
+        [strategy.path-finder]
+        type = "path-finder" 
         vault = "0x0000000000000000000000000000000000000000"
+        max-liquidity = "1000"
+        min-liquidity = "100"
         contract = "0x00"
-        max_profit_ratio = "0.005"
-        min_profit_ratio = "0.001"
+        max-profit-ratio = "0.005"
+        min-profit-ratio = "0.001"
     "#;
 
 
