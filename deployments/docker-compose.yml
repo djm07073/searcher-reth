@@ -1,50 +1,13 @@
 version: "3"
 
 services:
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"
-    command: -config.file=/etc/loki/loki.yml
+  logtail:
+    image: timberio/vector:latest-alpine
     volumes:
-      - ./etc/loki.yml:/etc/loki/loki.yml:ro
-      - ./data/loki:/var/loki
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - ./etc/promtail.yml:/etc/promtail/promtail.yml:ro
+      - ./etc/vector.toml:/etc/vector/vector.toml:ro
       - /var/log:/var/log:ro
-      - ./data/promtail:/var/lib/promtail
-    command: -config.file=/etc/promtail/promtail.yml
-    depends_on:
-      - loki
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_SECURITY_ALLOW_EMBEDDING=true
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
-    volumes:
-      - ./data/grafana:/var/lib/grafana
-    depends_on:
-      - loki
+      - LOGTAIL_TOKEN=${BETTER_STACK_TOKEN}
     restart: unless-stopped
     logging:
       driver: json-file
