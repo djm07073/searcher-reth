@@ -1,136 +1,82 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{ collections::HashMap, sync::{ Arc, atomic::{ AtomicBool, Ordering } } };
 
-use alloy_primitives::{Address, B256, U256, map::HashSet};
-use alloy_rpc_types::{AccessList, AccessListItem};
-use alloy_sol_types::{SolCall, SolValue};
-use eyre::{Error, Ok, Result};
-use rayon::{
-    iter::{IntoParallelRefIterator, ParallelIterator},
-    join,
-};
-use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use alloy_primitives::{ Address, B256, U256, map::HashSet };
+use alloy_rpc_types::{ AccessList, AccessListItem };
+use alloy_sol_types::{ SolCall, SolValue };
+use eyre::{ Error, Ok, Result };
+use rayon::{ iter::{ IntoParallelRefIterator, ParallelIterator }, join };
+use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{
-    Context, MainBuilder, MainContext, SystemCallEvm,
-    context::{
-        BlockEnv, CfgEnv, Evm, TxEnv,
-        result::{ExecutionResult, Output, ResultAndState},
-    },
+    context::result::{ ExecutionResult, Output, ResultAndState },
     database::StateProviderDatabase,
     db::CacheDB,
-    handler::{EthPrecompiles, instructions::EthInstructions},
-    interpreter::interpreter::EthInterpreter,
-    state::{AccountInfo, Bytecode},
+    state::Bytecode,
+    Context,
+    MainBuilder,
+    MainContext,
+    SystemCallEvm,
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::{
-    strategy::{CommonStrategyConfig, StrategyConfig},
-    types::Candidate,
-};
-use searcher_reth_core::strategy::{STRATEGY_CONTRACT_ADDRESS, Strategy};
+use searcher_reth_config::{ strategy::{ CommonStrategyConfig, StrategyConfig }, types::Candidate };
+use searcher_reth_core::strategy::Strategy;
 
 use crate::path_finding::types::executeCall;
 
-use super::types::{Hop, getProfitCall};
-
-type PathFinderCtx<'a, DB> = Context<
-    BlockEnv,
-    TxEnv,
-    CfgEnv,
-    CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, DB>>>,
->;
-
-type PathFinderEvm<'a, DB> = Evm<
-    PathFinderCtx<'a, DB>,
-    (),
-    EthInstructions<EthInterpreter, PathFinderCtx<'a, DB>>,
-    EthPrecompiles,
->;
+use super::types::{ Hop, getProfitCall };
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
 const MAX_SEARCH_DEPTH: usize = 20;
 const INV_GOLDEN_RATIO_NUM: u128 = 618_033_988_749_894_848;
 const INV_GOLDEN_RATIO_DEN: u128 = 1_000_000_000_000_000_000;
 
-pub struct PathFinder<'a, StrategyDatabase>
-where
-    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
-    evm: Option<PathFinderEvm<'a, StrategyDatabase>>,
+pub struct PathFinder {
     contract: Bytecode,
     liquidity_range: (U256, U256),
     profit_ratio_range: (U256, U256),
 }
 
-impl<'a, StrategyDatabase> Strategy<'a> for PathFinder<'a, StrategyDatabase>
-where
-    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
+impl Strategy for PathFinder {
     type Action = Hop;
-
-    type DB = StrategyDatabase;
 
     fn new(config: &StrategyConfig) -> Self {
         let contract = config.get_contract();
         let (max_profit_ratio, min_profit_ratio) = config.get_profit_ratios();
         let (max_liquidity, min_liquidity) = config.get_liquidity_range();
         Self {
-            evm: None,
             contract,
             liquidity_range: (min_liquidity, max_liquidity),
             profit_ratio_range: (min_profit_ratio, max_profit_ratio),
         }
     }
 
-    fn set_last_state(&mut self, provider: LatestStateProviderRef<'a, Self::DB>) {
-        let mut db: CacheDB<StateProviderDatabase<LatestStateProviderRef<'a, StrategyDatabase>>> =
-            CacheDB::new(StateProviderDatabase::new(provider));
-        let contract = self.contract.clone();
-        db.insert_account_info(
-            STRATEGY_CONTRACT_ADDRESS,
-            AccountInfo {
-                code_hash: contract.hash_slow(),
-                code: Some(contract.clone()),
-                ..Default::default()
-            },
-        );
-
-        let evm = Context::mainnet().with_db(db).build_mainnet();
-
-        self.evm = Some(evm);
-    }
-
     fn get_code(&self) -> Bytecode {
         self.contract.clone()
     }
 
-    fn find_profitable_candidates<T: PoolTransaction>(
+    fn find_profitable_candidates<
+        T: PoolTransaction,
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    >(
         &mut self,
+        latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
-        candidates: Vec<Candidate>,
+        candidates: Vec<Candidate>
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
         // 1. Get dirty states from pending transactions
-        let evm = self.evm.as_mut().unwrap();
-        let pevm = Arc::new(Mutex::new(evm));
         let dirty_states = pending_txs
             .par_iter()
             .filter_map(|tx| {
                 let to = tx.to()?;
                 let data = tx.input().clone();
-                let result = pevm.lock().unwrap().transact_system_call(data, to).unwrap();
-                let dirty_state: HashMap<Address, HashSet<U256>> = result
-                    .state
+                let db = CacheDB::new(StateProviderDatabase::new(&latest_state_provider));
+                let mut evm = Context::mainnet().with_db(db).build_mainnet();
+                let result = evm.transact_system_call(data, to).ok()?;
+                let dirty_state: HashMap<Address, HashSet<U256>> = result.state
                     .iter()
                     .filter(|(_, account)| account.is_touched())
                     .fold(HashMap::new(), |mut acc, (address, account)| {
-                        let changed_storage_keys: HashSet<U256> = account
-                            .storage
+                        let changed_storage_keys: HashSet<U256> = account.storage
                             .iter()
                             .filter(|(_, storage_slot)| storage_slot.is_changed())
                             .map(|(key, _)| *key)
@@ -163,8 +109,8 @@ where
             .fold(
                 || {
                     (
-                        Vec::<U256>::new(),                   // amounts
-                        Vec::<Vec<Hop>>::new(),               // routes
+                        Vec::<U256>::new(), // amounts
+                        Vec::<Vec<Hop>>::new(), // routes
                         HashMap::<Address, Vec<B256>>::new(), // access lists
                     )
                 },
@@ -195,16 +141,18 @@ where
                     let mut right = max_liquidity;
 
                     let diff = right - left;
-                    let mut mid1 = right
-                        - (diff * U256::from(INV_GOLDEN_RATIO_NUM)
-                            / U256::from(INV_GOLDEN_RATIO_DEN));
-                    let mut mid2 = left
-                        + (diff * U256::from(INV_GOLDEN_RATIO_NUM)
-                            / U256::from(INV_GOLDEN_RATIO_DEN));
+                    let mut mid1 =
+                        right -
+                        (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
+                            U256::from(INV_GOLDEN_RATIO_DEN);
+                    let mut mid2 =
+                        left +
+                        (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
+                            U256::from(INV_GOLDEN_RATIO_DEN);
 
                     let (mut profit1, mut profit2) = join(
-                        || Self::call_get_profit(&pevm, mid1, hops.clone()),
-                        || Self::call_get_profit(&pevm, mid2, hops.clone()),
+                        || self.get_profit(&latest_state_provider, mid1, hops.clone()),
+                        || self.get_profit(&latest_state_provider, mid2, hops.clone())
                     );
 
                     for _ in 0..MAX_SEARCH_DEPTH {
@@ -218,20 +166,22 @@ where
                             profit1 = profit2;
 
                             let diff = right - left;
-                            mid2 = left
-                                + (diff * U256::from(INV_GOLDEN_RATIO_NUM)
-                                    / U256::from(INV_GOLDEN_RATIO_DEN));
-                            profit2 = Self::call_get_profit(&pevm, mid2, hops.clone());
+                            mid2 =
+                                left +
+                                (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
+                                    U256::from(INV_GOLDEN_RATIO_DEN);
+                            profit2 = self.get_profit(&latest_state_provider, mid2, hops.clone());
                         } else {
                             right = mid2;
                             mid2 = mid1;
                             profit2 = profit1;
 
                             let diff = right - left;
-                            mid1 = right
-                                - (diff * U256::from(INV_GOLDEN_RATIO_NUM)
-                                    / U256::from(INV_GOLDEN_RATIO_DEN));
-                            profit1 = Self::call_get_profit(&pevm, mid1, hops.clone());
+                            mid1 =
+                                right -
+                                (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
+                                    U256::from(INV_GOLDEN_RATIO_DEN);
+                            profit1 = self.get_profit(&latest_state_provider, mid1, hops.clone());
                         }
                     }
 
@@ -243,10 +193,9 @@ where
                     let encoded_data = (getProfitCall { amount, route: hops.clone() }).abi_encode();
 
                     let element: Option<(Vec<Hop>, Vec<AccessListItem>)> = {
-                        let mut evm = pevm.lock().unwrap();
                         // TODO: access list from execute contract not from simulation contract
-                        let ResultAndState { result, state } = evm
-                            .transact_system_call(encoded_data.into(), STRATEGY_CONTRACT_ADDRESS)
+                        let ResultAndState { result, state } = self
+                            .call_get_profit(&latest_state_provider, encoded_data)
                             .unwrap();
 
                         let clean_states = Self::collect_clean_states(&state, &dirty_states);
@@ -299,7 +248,7 @@ where
                     }
 
                     acc
-                },
+                }
             )
             // Combine results from all threads
             .reduce_with(|mut acc, curr| {
@@ -321,7 +270,7 @@ where
                     access_map
                         .into_iter()
                         .map(|(address, storage_keys)| AccessListItem { address, storage_keys })
-                        .collect::<Vec<AccessListItem>>(),
+                        .collect::<Vec<AccessListItem>>()
                 );
 
                 if !routes.is_empty() {
@@ -348,19 +297,19 @@ where
     }
 }
 
-impl<'a, StrategyDatabase> PathFinder<'a, StrategyDatabase>
-where
-    StrategyDatabase: DBProvider + BlockHashReader + StateCommitmentProvider,
-{
-    fn call_get_profit(
-        pevm: &Arc<Mutex<&mut PathFinderEvm<'a, StrategyDatabase>>>,
+impl PathFinder {
+    fn get_profit<DB>(
+        &self,
+        latest_state_provider: &LatestStateProviderRef<'_, DB>,
         amount: U256,
-        route: Vec<Hop>,
-    ) -> U256 {
+        route: Vec<Hop>
+    ) -> U256
+        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    {
         let encoded = (getProfitCall { amount, route }).abi_encode();
-        let mut evm = pevm.lock().unwrap();
-        let ResultAndState { result, .. } =
-            evm.transact_system_call(encoded.into(), STRATEGY_CONTRACT_ADDRESS).unwrap();
+        let ResultAndState { result, .. } = self
+            .call_get_profit(latest_state_provider, encoded)
+            .unwrap();
         match result {
             ExecutionResult::Success { output: Output::Call(value), .. } => {
                 <U256>::abi_decode(&value).unwrap_or_default()
