@@ -85,7 +85,7 @@ impl SearcherExEx {
                     }
 
                     // 1. Get the pending transactions from the transaction pool
-                    let pending_txs = ctx
+                    let pending_txs: Vec<EthPooledTransaction> = ctx
                         .components
                         .pool()
                         .pending_transactions()

@@ -1,29 +1,38 @@
-use std::{ collections::HashMap, sync::{ Arc, atomic::{ AtomicBool, Ordering } } };
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use alloy_primitives::{ Address, B256, U256, map::HashSet };
-use alloy_rpc_types::{ AccessList, AccessListItem };
-use alloy_sol_types::{ SolCall, SolValue };
-use eyre::{ Error, Ok, Result };
-use rayon::{ iter::{ IntoParallelRefIterator, ParallelIterator }, join };
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
+use alloy_primitives::{Address, B256, U256, map::HashSet};
+use alloy_rpc_types::{AccessList, AccessListItem};
+use alloy_sol_types::{SolCall, SolValue};
+use eyre::{Error, Ok, Result};
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    join,
+};
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
-    context::result::{ ExecutionResult, Output, ResultAndState },
+    Context, MainBuilder, MainContext, SystemCallEvm,
+    context::result::{ExecutionResult, Output, ResultAndState},
     database::StateProviderDatabase,
     db::CacheDB,
     state::Bytecode,
-    Context,
-    MainBuilder,
-    MainContext,
-    SystemCallEvm,
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::{ strategy::{ CommonStrategyConfig, StrategyConfig }, types::Candidate };
+use searcher_reth_config::{
+    strategy::{CommonStrategyConfig, StrategyConfig},
+    types::Candidate,
+};
 use searcher_reth_core::strategy::Strategy;
 
 use crate::path_finding::types::executeCall;
 
-use super::types::{ Hop, getProfitCall };
+use super::types::{Hop, getProfitCall};
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
 const MAX_SEARCH_DEPTH: usize = 20;
@@ -56,12 +65,12 @@ impl Strategy for PathFinder {
 
     fn find_profitable_candidates<
         T: PoolTransaction,
-        DB: DBProvider + BlockHashReader + StateCommitmentProvider
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     >(
         &mut self,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
-        candidates: Vec<Candidate>
+        candidates: Vec<Candidate>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
         // 1. Get dirty states from pending transactions
         let dirty_states = pending_txs
@@ -72,11 +81,13 @@ impl Strategy for PathFinder {
                 let db = CacheDB::new(StateProviderDatabase::new(&latest_state_provider));
                 let mut evm = Context::mainnet().with_db(db).build_mainnet();
                 let result = evm.transact_system_call(data, to).ok()?;
-                let dirty_state: HashMap<Address, HashSet<U256>> = result.state
+                let dirty_state: HashMap<Address, HashSet<U256>> = result
+                    .state
                     .iter()
                     .filter(|(_, account)| account.is_touched())
                     .fold(HashMap::new(), |mut acc, (address, account)| {
-                        let changed_storage_keys: HashSet<U256> = account.storage
+                        let changed_storage_keys: HashSet<U256> = account
+                            .storage
                             .iter()
                             .filter(|(_, storage_slot)| storage_slot.is_changed())
                             .map(|(key, _)| *key)
@@ -109,8 +120,8 @@ impl Strategy for PathFinder {
             .fold(
                 || {
                     (
-                        Vec::<U256>::new(), // amounts
-                        Vec::<Vec<Hop>>::new(), // routes
+                        Vec::<U256>::new(),                   // amounts
+                        Vec::<Vec<Hop>>::new(),               // routes
                         HashMap::<Address, Vec<B256>>::new(), // access lists
                     )
                 },
@@ -141,18 +152,16 @@ impl Strategy for PathFinder {
                     let mut right = max_liquidity;
 
                     let diff = right - left;
-                    let mut mid1 =
-                        right -
-                        (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
-                            U256::from(INV_GOLDEN_RATIO_DEN);
-                    let mut mid2 =
-                        left +
-                        (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
-                            U256::from(INV_GOLDEN_RATIO_DEN);
+                    let mut mid1 = right
+                        - (diff * U256::from(INV_GOLDEN_RATIO_NUM))
+                            / U256::from(INV_GOLDEN_RATIO_DEN);
+                    let mut mid2 = left
+                        + (diff * U256::from(INV_GOLDEN_RATIO_NUM))
+                            / U256::from(INV_GOLDEN_RATIO_DEN);
 
                     let (mut profit1, mut profit2) = join(
                         || self.get_profit(&latest_state_provider, mid1, hops.clone()),
-                        || self.get_profit(&latest_state_provider, mid2, hops.clone())
+                        || self.get_profit(&latest_state_provider, mid2, hops.clone()),
                     );
 
                     for _ in 0..MAX_SEARCH_DEPTH {
@@ -166,10 +175,9 @@ impl Strategy for PathFinder {
                             profit1 = profit2;
 
                             let diff = right - left;
-                            mid2 =
-                                left +
-                                (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
-                                    U256::from(INV_GOLDEN_RATIO_DEN);
+                            mid2 = left
+                                + (diff * U256::from(INV_GOLDEN_RATIO_NUM))
+                                    / U256::from(INV_GOLDEN_RATIO_DEN);
                             profit2 = self.get_profit(&latest_state_provider, mid2, hops.clone());
                         } else {
                             right = mid2;
@@ -177,10 +185,9 @@ impl Strategy for PathFinder {
                             profit2 = profit1;
 
                             let diff = right - left;
-                            mid1 =
-                                right -
-                                (diff * U256::from(INV_GOLDEN_RATIO_NUM)) /
-                                    U256::from(INV_GOLDEN_RATIO_DEN);
+                            mid1 = right
+                                - (diff * U256::from(INV_GOLDEN_RATIO_NUM))
+                                    / U256::from(INV_GOLDEN_RATIO_DEN);
                             profit1 = self.get_profit(&latest_state_provider, mid1, hops.clone());
                         }
                     }
@@ -194,9 +201,8 @@ impl Strategy for PathFinder {
 
                     let element: Option<(Vec<Hop>, Vec<AccessListItem>)> = {
                         // TODO: access list from execute contract not from simulation contract
-                        let ResultAndState { result, state } = self
-                            .call_get_profit(&latest_state_provider, encoded_data)
-                            .unwrap();
+                        let ResultAndState { result, state } =
+                            self.call_get_profit(&latest_state_provider, encoded_data).unwrap();
 
                         let clean_states = Self::collect_clean_states(&state, &dirty_states);
 
@@ -248,7 +254,7 @@ impl Strategy for PathFinder {
                     }
 
                     acc
-                }
+                },
             )
             // Combine results from all threads
             .reduce_with(|mut acc, curr| {
@@ -270,7 +276,7 @@ impl Strategy for PathFinder {
                     access_map
                         .into_iter()
                         .map(|(address, storage_keys)| AccessListItem { address, storage_keys })
-                        .collect::<Vec<AccessListItem>>()
+                        .collect::<Vec<AccessListItem>>(),
                 );
 
                 if !routes.is_empty() {
@@ -302,14 +308,14 @@ impl PathFinder {
         &self,
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         amount: U256,
-        route: Vec<Hop>
+        route: Vec<Hop>,
     ) -> U256
-        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    where
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         let encoded = (getProfitCall { amount, route }).abi_encode();
-        let ResultAndState { result, .. } = self
-            .call_get_profit(latest_state_provider, encoded)
-            .unwrap();
+        let ResultAndState { result, .. } =
+            self.call_get_profit(latest_state_provider, encoded).unwrap();
         match result {
             ExecutionResult::Success { output: Output::Call(value), .. } => {
                 <U256>::abi_decode(&value).unwrap_or_default()
