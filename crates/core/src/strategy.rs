@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use alloy_primitives::{Address, FixedBytes, U256, address};
+use alloy_primitives::{Address, FixedBytes, U256, address, map::HashSet};
 use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
 use eyre::Error;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
     Context, MainBuilder, MainContext, SystemCallEvm,
     context::result::ResultAndState,
     database::StateProviderDatabase,
     db::CacheDB,
-    primitives::HashSet,
     state::{AccountInfo, Bytecode, EvmState},
 };
 use reth_transaction_pool::PoolTransaction;
@@ -45,6 +45,8 @@ pub trait Strategy {
 
     fn get_code(&self) -> Bytecode;
 
+    fn get_vault(&self) -> Address;
+
     /// Finds profitable candidates from the pending transactions and candidates.
     fn find_profitable_candidates<T, DB>(
         &mut self,
@@ -55,6 +57,74 @@ pub trait Strategy {
     where
         T: PoolTransaction,
         DB: DBProvider + BlockHashReader + StateCommitmentProvider;
+
+    fn collect_dirty_states_from_pending_txs<T, DB>(
+        pending_txs: Vec<T>,
+        latest_state_provider: &LatestStateProviderRef<'_, DB>,
+    ) -> DirtyStates
+    where
+        T: PoolTransaction,
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
+    {
+        pending_txs
+            .par_iter()
+            .filter_map(|tx| {
+                let to = tx.to()?;
+                let data = tx.input().clone();
+                let db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
+                let mut evm = Context::mainnet().with_db(db).build_mainnet();
+                let result = evm.transact_system_call(data, to).ok()?;
+                let dirty_state: DirtyStates = result
+                    .state
+                    .iter()
+                    .filter(|(_, account)| account.is_touched())
+                    .fold(HashMap::new(), |mut acc, (address, account)| {
+                        let changed_storage_keys: HashSet<U256> = account
+                            .storage
+                            .iter()
+                            .filter(|(_, storage_slot)| storage_slot.is_changed())
+                            .map(|(key, _)| *key)
+                            .collect();
+
+                        if !changed_storage_keys.is_empty() {
+                            acc.entry(*address).or_default().extend(changed_storage_keys);
+                        }
+                        acc
+                    });
+                Some(dirty_state)
+            })
+            .reduce_with(|mut acc, dirty_state| {
+                for (address, keys) in dirty_state {
+                    acc.entry(address).or_default().extend(keys);
+                }
+                acc
+            })
+            .unwrap_or_default()
+    }
+
+    /// Check if the result state has any dirty state if yes return None or not return the clean
+    /// states.
+    fn collect_clean_states(
+        result_states: &EvmState,
+        dirty_states: &DirtyStates,
+    ) -> Option<Vec<AccessListItem>> {
+        let mut clean_states = Vec::<AccessListItem>::new();
+        for (address, account) in result_states.iter() {
+            if let Some(dirty_storage) = dirty_states.get(address) {
+                if !account.is_touched() {
+                    continue;
+                }
+                if account.storage.keys().any(|key| dirty_storage.contains(key)) {
+                    return None;
+                }
+                let clean_storage_keys: Vec<FixedBytes<32>> =
+                    account.storage.keys().map(|key| FixedBytes::<32>::from(*key)).collect();
+                clean_states
+                    .push(AccessListItem { address: *address, storage_keys: clean_storage_keys });
+            }
+        }
+        if clean_states.is_empty() { None } else { Some(clean_states) }
+    }
 
     fn call_get_profit<'a, DB>(
         &self,
@@ -80,27 +150,18 @@ pub trait Strategy {
         Ok(result)
     }
 
-    /// Check if the result state has any dirty state if yes return None or not return the clean
-    /// states.
-    fn collect_clean_states(
-        result_states: &EvmState,
-        dirty_states: &DirtyStates,
-    ) -> Option<Vec<AccessListItem>> {
-        let mut clean_states = Vec::<AccessListItem>::new();
-        for (address, account) in result_states.iter() {
-            if let Some(dirty_storage) = dirty_states.get(address) {
-                if !account.is_touched() {
-                    continue;
-                }
-                if account.storage.keys().any(|key| dirty_storage.contains(key)) {
-                    return None;
-                }
-                let clean_storage_keys: Vec<FixedBytes<32>> =
-                    account.storage.keys().map(|key| FixedBytes::<32>::from(*key)).collect();
-                clean_states
-                    .push(AccessListItem { address: *address, storage_keys: clean_storage_keys });
-            }
-        }
-        if clean_states.is_empty() { None } else { Some(clean_states) }
+    fn call_execute<'a, DB>(
+        &self,
+        provider: &'a LatestStateProviderRef<'a, DB>,
+        encoded: Vec<u8>,
+    ) -> Result<ResultAndState, Error>
+    where
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
+    {
+        let vault = self.get_vault();
+        let db = CacheDB::new(StateProviderDatabase::new(provider));
+        let mut evm = Context::mainnet().with_db(db).build_mainnet();
+        let result = evm.transact_system_call(encoded.into(), vault)?;
+        Ok(result)
     }
 }

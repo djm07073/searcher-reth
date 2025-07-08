@@ -8897,6 +8897,7 @@ dependencies = [
  "alloy-sol-types",
  "eyre",
  "futures-util",
+ "rayon",
  "reth",
  "reth-chainspec",
  "reth-evm",
