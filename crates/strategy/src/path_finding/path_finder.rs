@@ -71,7 +71,14 @@ impl Strategy for PathFinder {
         let (max_profit, min_profit) = self.profit_range;
         let (min_liquidity, max_liquidity) = self.liquidity_range;
         let found_max_profit = Arc::new(AtomicBool::new(false));
-
+        let no_vault = self.get_vault() == Address::ZERO;
+        if no_vault {
+            tracing::warn!(
+                target: "reth-exex",
+                action = "vault_address_is_zero",
+                "Vault address is zero, skipping candidate"
+            );
+        }
         let result = candidates
             .par_iter()
             .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
@@ -108,14 +115,18 @@ impl Strategy for PathFinder {
                     }
 
                     // 2-2. Search optimal amount in liqudity range to get maximum profit
-                    let (amount, net_profit) = match self.golden_section_search(
-                        &latest_state_provider,
-                        min_liquidity,
-                        max_liquidity,
-                        &hops
-                    ) {
+                    let (amount, net_profit) = match
+                        self.golden_section_search(
+                            &latest_state_provider,
+                            min_liquidity,
+                            max_liquidity,
+                            &hops
+                        )
+                    {
                         Some(res) if !found_max_profit.load(Ordering::Relaxed) => res,
-                        _ => return acc,
+                        _ => {
+                            return acc;
+                        }
                     };
 
                     // 2-3. Filter out based on profit range
@@ -136,6 +147,9 @@ impl Strategy for PathFinder {
                         "getProfitCall succeeded with output",
                     );
 
+                    if no_vault {
+                        return acc;
+                    }
                     // 2-4. Execute execute function of vault to get access list and to check it has dirty
                     // states, it it have, filter them out
                     let ResultAndState { result: _, state } = match
