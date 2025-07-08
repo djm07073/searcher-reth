@@ -39,5 +39,5 @@ tokio.workspace = true
 eyre.workspace = true
 reth-transaction-pool.workspace = true
 searcher-reth-config.workspace = true
-
+rayon.workspace = true
 

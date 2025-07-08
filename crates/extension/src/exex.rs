@@ -83,14 +83,9 @@ impl SearcherExEx {
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                         continue;
                     }
-                    // 1. Create a read-only database provider that we can use to get latest state
-                    let database_provider: <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider = ctx
-                        .provider()
-                        .database_provider_ro()?;
-                    let latest_state_provider = LatestStateProviderRef::new(&database_provider);
 
-                    // 2. Get the pending transactions from the transaction pool
-                    let pending_txs = ctx
+                    // 1. Get the pending transactions from the transaction pool
+                    let pending_txs: Vec<EthPooledTransaction> = ctx
                         .components
                         .pool()
                         .pending_transactions()
@@ -98,12 +93,20 @@ impl SearcherExEx {
                         .map(|tx| tx.transaction.clone())
                         .collect();
 
+                    // 2. Create a read-only database provider that we can use to get latest state
+                    let database_provider: <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider = ctx
+                        .provider()
+                        .database_provider_ro()?;
+                    let latest_state_provider = LatestStateProviderRef::new(&database_provider);
+
                     // 3. Filter candidates by path finder based on the latest state and pending
                     // transactions
-                    path_finder.set_last_state(latest_state_provider);
                     let candidates = config.write().unwrap().get_candidates(chain_id)?;
-                    let profitable_candidates =
-                        path_finder.find_profitable_candidates(pending_txs, candidates.clone())?;
+                    let profitable_candidates = path_finder.find_profitable_candidates(
+                        latest_state_provider,
+                        pending_txs,
+                        candidates.clone(),
+                    )?;
 
                     if profitable_candidates.is_none() {
                         tracing::info!(

@@ -18,7 +18,7 @@ pub trait CommonStrategyConfig {
     fn get_vault(&self) -> Address;
     fn get_liquidity_range(&self) -> (U256, U256);
     fn get_contract(&self) -> Bytecode;
-    fn get_profit_ratios(&self) -> (U256, U256);
+    fn get_profit_range(&self) -> (U256, U256);
 }
 
 const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -55,20 +55,16 @@ impl CommonStrategyConfig for StrategyConfig {
         }
     }
 
-    fn get_profit_ratios(&self) -> (U256, U256) {
+    fn get_profit_range(&self) -> (U256, U256) {
         match self {
-            StrategyConfig::PathFinder(config) => (
-                U256::from(
-                    (((config.max_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
-                        * ONE_ETHER)
-                        / 1_000_000,
-                ),
-                U256::from(
-                    (((config.min_profit_ratio.parse::<f64>().unwrap() * 1_000_000.0) as u128)
-                        * ONE_ETHER)
-                        / 1_000_000,
-                ),
-            ),
+            StrategyConfig::PathFinder(config) => {
+                let max_profit = config.max_profit.parse::<f64>().unwrap();
+                let min_profit = config.min_profit.parse::<f64>().unwrap();
+                (
+                    U256::from((max_profit * (ONE_ETHER as f64)) as u128),
+                    U256::from((min_profit * (ONE_ETHER as f64)) as u128),
+                )
+            } // TODO: Add other strategy configurations
         }
     }
 }
@@ -85,8 +81,8 @@ pub struct PathFinderConfig {
     pub min_liquidity: String,
     /* Minimum liquidity to use for path finding ex. 100 *
      * 1ether(100 USDC) */
-    pub max_profit_ratio: String,
-    pub min_profit_ratio: String,
+    pub max_profit: String,
+    pub min_profit: String,
 }
 
 // TODO: Add other strategy configurations
@@ -102,16 +98,16 @@ mod tests {
             contract: "00".to_string(),
             max_liquidity: "1000".to_string(), // 1000 USDC
             min_liquidity: "100".to_string(),  // 100 USDC
-            max_profit_ratio: "0.005".to_string(),
-            min_profit_ratio: "0.001".to_string(),
+            max_profit: "100".to_string(),     // 100 USDC
+            min_profit: "0.001".to_string(),   // 0.001 USDC
         };
         let strategy = StrategyConfig::PathFinder(cfg.clone());
 
         assert_eq!(strategy.get_exex_id(), PATH_FINDER_EXEX_ID);
         assert_eq!(strategy.get_vault(), cfg.vault.parse::<Address>().unwrap());
 
-        let (max, min) = strategy.get_profit_ratios();
-        let expected_max = (((0.005_f64 * 1_000_000.0) as u128) * ONE_ETHER) / 1_000_000u128;
+        let (max, min) = strategy.get_profit_range();
+        let expected_max = (((100.0 * 1_000_000.0) as u128) * ONE_ETHER) / 1_000_000u128;
         let expected_min = (((0.001_f64 * 1_000_000.0) as u128) * ONE_ETHER) / 1_000_000u128;
         assert_eq!(max, U256::from(expected_max));
         assert_eq!(min, U256::from(expected_min));

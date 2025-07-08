@@ -77,6 +77,13 @@ where
         let (from, atomic_nonce) = self.wallet.next_signer();
         let nonce = atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
+        if message.to == Address::ZERO {
+            tracing::info!(
+                target: "reth-exex",
+                "Vault is zero, skipping transaction sending"
+            );
+            return Ok(FixedBytes::default());
+        }
         tracing::info!(
             event = "transaction_send",
             nonce = nonce,
@@ -85,6 +92,7 @@ where
             "Sending and subscribing to transaction"
         );
 
+        // TODO: fix gas price and limit
         const MAX_FEE_PER_GAS: u128 = 20_000_000_000;
         const MAX_PRIORITY_FEE_PER_GAS: u128 = 1_000_000_000;
         const GAS_LIMIT: u64 = 21_000;

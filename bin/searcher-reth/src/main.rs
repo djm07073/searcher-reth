@@ -1,4 +1,4 @@
-use std::sync::{ Arc, RwLock };
+use std::sync::{Arc, RwLock};
 
 use clap::Parser;
 use reth::chainspec::EthereumChainSpecParser;
@@ -6,7 +6,7 @@ use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
     exex::SearcherExEx,
-    strategy::config::{ manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID },
+    strategy::config::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID},
     util::signal_manager::SignalManager,
 };
 
