@@ -1,23 +1,16 @@
-use std::{
-    str,
-    sync::{Arc, RwLock},
-};
+use std::sync::{ Arc, RwLock };
 
 use clap::Parser;
-use eyre::eyre;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
     exex::SearcherExEx,
-    strategy::config::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID},
-    util::{logger, signal_manager::SignalManager},
+    strategy::config::{ manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID },
+    util::signal_manager::SignalManager,
 };
 
-const SERVICE_NAME: &str = "searcher-reth";
-
 fn main() -> eyre::Result<()> {
-    let _logger = logger::init(SERVICE_NAME).map_err(|e| eyre!("Logger init failed: {}", e))?;
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
     let wallet = config.read().unwrap().get_wallet().unwrap();
 
