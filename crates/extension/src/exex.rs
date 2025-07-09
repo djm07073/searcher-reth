@@ -14,7 +14,7 @@ use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
     BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
 };
-use reth_tracing::tracing;
+use reth_tracing::tracing::{self};
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
 use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::{
@@ -65,7 +65,7 @@ impl SearcherExEx {
             let relayer_tx = relayer_pool.start().await?;
             tracing::info!(
                 target: "reth-exex",
-                action = "relayer_pool_start",
+                event = "relayer_pool_started",
                 "Starting Relayer Pool"
             );
 
@@ -108,13 +108,14 @@ impl SearcherExEx {
                         candidates.clone(),
                     )?;
 
+                    tracing::info!(
+                        target: "reth-exex",
+                        event = "filter_candidates",
+                        success = profitable_candidates.is_none(),
+                        height = block_num,
+                        "No profitable candidates found"
+                    );
                     if profitable_candidates.is_none() {
-                        tracing::info!(
-                            target: "reth-exex",
-                            action = "no_profitable_candidates",
-                            height = block_num,
-                            "No profitable candidates found"
-                        );
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
                         continue;
                     }
@@ -130,13 +131,15 @@ impl SearcherExEx {
                         match r {
                             Ok(_) => tracing::info!(
                                 target: "reth-exex",
-                                action = "send_candidates_to_relayer_pool",
+                                event = "send_candidates_to_relayer_pool",
+                                success = true,
                                 height = block_num,
                                 "Successfully sent candidates to relayer pool"
                             ),
                             Err(e) => tracing::error!(
                                 target: "reth-exex",
-                                action = "send_candidates_to_relayer_pool",
+                                event = "send_candidates_to_relayer_pool",
+                                success = false,
                                 error = ?e,
                                 height = block_num,
                                 "Failed to send candidates to relayer pool"
@@ -149,7 +152,7 @@ impl SearcherExEx {
                         if SignalType::Reload == signal {
                             tracing::info!(
                                 target: "reth-exex",
-                                action = "reload_config",
+                                event = "reload_config",
                                 height = block_num,
                                 "Reloading configuration"
                             );

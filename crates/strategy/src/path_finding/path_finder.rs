@@ -76,6 +76,16 @@ impl Strategy for PathFinder {
         pending_txs: Vec<T>,
         candidates: Vec<Candidate>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
+        // 0. Check if the vault address is zero, if so, skip to make calldata
+        let no_vault = self.get_vault() == Address::ZERO;
+        if no_vault {
+            tracing::warn!(
+                target: "path-finder",
+                event = "no_vault",
+                "Vault address is zero, skipping candidate"
+            );
+        }
+
         // 1. Get dirty states from pending transactions
         let dirty_states =
             Self::collect_dirty_states_from_pending_txs(pending_txs, &latest_state_provider);
@@ -87,21 +97,14 @@ impl Strategy for PathFinder {
         tracing::info!(
             target: "path-finder",
             event = "search_ranges",
-            min_liquidity = ?min_liquidity,
-            max_liquidity = ?max_liquidity,
+            min_liquidity = %min_liquidity,
+            max_liquidity = %max_liquidity,
             min_profit = %min_profit,
             max_profit = %max_profit,
             "starting search with configured ranges",
         );
+
         let found_max_profit = Arc::new(AtomicBool::new(false));
-        let no_vault = self.get_vault() == Address::ZERO;
-        if no_vault {
-            tracing::warn!(
-                target: "reth-exex",
-                action = "vault_address_is_zero",
-                "Vault address is zero, skipping candidate"
-            );
-        }
         let result = candidates
             .par_iter()
             .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
@@ -119,16 +122,16 @@ impl Strategy for PathFinder {
                         return acc;
                     }
                     // 2-1. Decode hops
-                    let mut hops = Vec::new();
+                    let mut route = Vec::new();
                     for hop in candidate.iter() {
                         match Hop::abi_decode(hop) {
                             std::result::Result::Ok(decoded_hop) => {
-                                hops.push(decoded_hop);
+                                route.push(decoded_hop);
                             }
                             Err(_) => {
                                 tracing::warn!(
                                     target: "reth-exex",
-                                    action = "hop_decode_failed",
+                                    event = "hop_decode_failed",
                                     data = ?hop,
                                     "Failed to decode hop in candidate, skipping entire candidate"
                                 );
@@ -142,7 +145,7 @@ impl Strategy for PathFinder {
                         &latest_state_provider,
                         min_liquidity,
                         max_liquidity,
-                        &hops,
+                        &route,
                     ) {
                         Some(res) if !found_max_profit.load(Ordering::Relaxed) => res,
                         _ => {
@@ -152,35 +155,42 @@ impl Strategy for PathFinder {
 
                     tracing::info!(
                         target: "path-finder",
-                        event = "profit_predicted",
+                        event = "profit",
+                        sub_event = "predicted",
                         amount = %amount,
                         profit = %net_profit,
-                        route = ?hops,
-                        "profit calculated for candidate",
+                        route = ?route,
+                        "get optimal amount and profit from golden section search",
                     );
 
                     // 2-3. Filter out based on profit range
                     let route = if net_profit.ge(&max_profit) {
                         found_max_profit.store(true, Ordering::Relaxed);
-                        hops.clone()
+                        route.clone()
                     } else if net_profit.ge(&min_profit) {
-                        hops.clone()
+                        route.clone()
                     } else {
                         tracing::info!(
                             target: "path-finder",
-                            event = "profit_rejected",
+                            event = "profit",
+                            sub_event = "filtered",
+                            filter = "profit range",
                             profit = %net_profit,
-                            "profit below minimum threshold",
+                            route = ?route.clone(),
+                            "filter route profit below minimum threshold",
                         );
                         return acc;
                     };
 
                     tracing::info!(
                         target: "path-finder",
-                        event = "profit_after_filter",
+                        event = "profit",
+                        sub_event = "predicted",
                         profit = %net_profit,
+                        min_profit = %min_profit,
                         route = ?route.clone(),
-                        "candidate passed profit filter",
+                        vault = no_vault,
+                        "filtered by profit",
                     );
 
                     if no_vault {
@@ -197,7 +207,7 @@ impl Strategy for PathFinder {
                         Err(e) => {
                             tracing::warn!(
                                 target: "reth-exex",
-                                action = "execute failed",
+                                event = "execute failed",
                                 error = ?e,
                             );
                             return acc;
@@ -212,10 +222,12 @@ impl Strategy for PathFinder {
 
                     tracing::info!(
                         target: "path-finder",
-                        event = "profit_after_dirty_filter",
+                        event = "profit",
+                        sub_event = "predicted",
+                        filter = "dirty states",
                         profit = %net_profit,
                         route = ?route.clone(),
-                        "candidate passed dirty state filter",
+                        "filtered by dirty states",
                     );
 
                     // 2-5. accumulate result
@@ -256,22 +268,15 @@ impl Strategy for PathFinder {
                 );
 
                 if !routes.is_empty() {
-                    // Log the routes being sent
-                    let routes = routes
-                        .clone()
-                        .iter()
-                        .map(|route| format!("{:?}", route))
-                        .collect::<Vec<String>>();
-                    let route_len = routes.len();
                     tracing::info!(
                         target: "reth-exex",
-                        action = "send_profitable_candidates_to_relayer_pool",
-                        route_len = route_len,
-                        routes = routes.join(", "),
+                        event = "send_profitable_candidates_to_relayer_pool",
+                        route_len = routes.len(),
+                        routes = ?routes,
                     );
                 }
-                let calldata = (executeCall { amounts, routes }).abi_encode();
 
+                let calldata = (executeCall { amounts, routes }).abi_encode();
                 (calldata, access_list)
             });
 
@@ -294,7 +299,7 @@ impl PathFinder {
         if result.is_err() {
             tracing::warn!(
                 target: "reth-exex",
-                action = "get_profit_call_failed",
+                event = "get_profit_call_failed",
                 error = ?result.err(),
             );
             return None;

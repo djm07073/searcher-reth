@@ -81,10 +81,10 @@ where
         let (from, atomic_nonce) = self.wallet.next_signer();
         let nonce = atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
-        if message.to == Address::ZERO {
+        if message.to == Address::ZERO || message.calldata.is_empty() {
             tracing::info!(
                 target: "reth-exex",
-                "Vault is zero, skipping transaction sending"
+                "Vault is zero or calldata is empty, skipping transaction sending"
             );
             return Ok(FixedBytes::default());
         }
@@ -140,13 +140,13 @@ where
                 TransactionEvent::Mined(block_hash) => {
                     tracing::info!(
                         event = "transaction_mined",
-                        block_hash = ?block_hash,
-                        relayer = ?from,
+                        block_hash = %block_hash,
+                        relayer = %from,
                         nonce = nonce,
-                        tx_hash = ?tx_hash,
+                        tx_hash = %tx_hash,
                         "Transaction successfully mined"
                     );
-                    // TODO: get events from transaction receipt
+
                     let receipt = self
                         .fnc
                         .provider()
@@ -160,18 +160,13 @@ where
                                     let parsed = Profit::decode_log(log)?;
                                     tracing::info!(
                                         event = "profit_realized",
-                                        token = ?parsed.token,
+                                        token = %parsed.token,
                                         profit = %parsed.profit,
                                         "profit event received"
                                     );
                                 }
                             }
                         }
-                        tracing::info!(
-                            event = "profit_receipt",
-                            tx_hash = ?tx_hash,
-                            "transaction receipt retrieved"
-                        );
                     }
 
                     return Ok(tx_hash);
