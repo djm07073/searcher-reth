@@ -16,12 +16,12 @@ use reth_provider::{
 };
 use reth_tracing::tracing;
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
+use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::{
     config::{manager::ConfigManager, strategy::CommonStrategyConfig},
     core::strategy::Strategy,
     path_finding::PathFinder,
 };
-use searcher_reth_util::SignalType;
 use tokio::sync::broadcast;
 
 use crate::relayer_pool::{RelayerMessage, RelayerPool};

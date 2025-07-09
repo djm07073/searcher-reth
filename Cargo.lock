@@ -8945,8 +8945,17 @@ dependencies = [
  "reth-revm",
  "reth-tracing",
  "reth-transaction-pool",
+ "searcher-reth-manager",
  "searcher-reth-strategy",
- "searcher-reth-util",
+ "tokio",
+]
+
+[[package]]
+name = "searcher-reth-manager"
+version = "0.0.0"
+dependencies = [
+ "eyre",
+ "reth-tracing",
  "tokio",
 ]
 
@@ -8981,15 +8990,6 @@ dependencies = [
  "reth-transaction-pool",
  "searcher-reth-config",
  "searcher-reth-core",
- "tokio",
-]
-
-[[package]]
-name = "searcher-reth-util"
-version = "0.0.0"
-dependencies = [
- "eyre",
- "reth-tracing",
  "tokio",
 ]
 

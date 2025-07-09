@@ -41,7 +41,7 @@ eyre.workspace = true
 clap.workspace = true
 
 searcher-reth-strategy.workspace = true
-searcher-reth-util.workspace = true
+searcher-reth-manager.workspace = true
 
 rayon.workspace = true
 reth-transaction-pool.workspace = true

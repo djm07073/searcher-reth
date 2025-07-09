@@ -3,9 +3,11 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+use alloy_consensus::TxReceipt;
 use alloy_eips::Encodable2718;
 use alloy_network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder};
 use alloy_primitives::{Address, ChainId, FixedBytes};
+use alloy_sol_types::SolEvent;
 use eyre::Result;
 use futures_util::StreamExt;
 use reth::{
@@ -14,15 +16,17 @@ use reth::{
     rpc::types::{AccessList, TransactionRequest},
     transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
 };
-use reth_primitives::{Recovered, TransactionSigned};
-use reth_provider::AccountReader;
+use reth_primitives::{LogData, Recovered, TransactionSigned};
+use reth_provider::{AccountReader, ReceiptProvider};
 use reth_tracing::tracing;
 use reth_transaction_pool::EthPooledTransaction;
-use searcher_reth_util::SignalType;
+use searcher_reth_manager::SignalType;
 use tokio::sync::{
     broadcast,
     mpsc::{self, Receiver, Sender},
 };
+
+use crate::relayer_pool::types::Profit;
 
 use super::wallet::RelayerWallet;
 
@@ -142,6 +146,34 @@ where
                         tx_hash = ?tx_hash,
                         "Transaction successfully mined"
                     );
+                    // TODO: get events from transaction receipt
+                    let receipt = self
+                        .fnc
+                        .provider()
+                        .receipt_by_hash(tx_hash)
+                        .map_err(|e| eyre::eyre!("Failed to get transaction: {:?}", e))?;
+
+                    if let Some(receipt) = receipt {
+                        for log in receipt.logs() {
+                            if let Some(sig) = LogData::topics(log).first() {
+                                if sig == &Profit::SIGNATURE_HASH {
+                                    let parsed = Profit::decode_log(log)?;
+                                    tracing::info!(
+                                        event = "real_profit",
+                                        token = ?parsed.token,
+                                        profit = ?parsed.profit,
+                                        "Get Profit"
+                                    );
+                                }
+                            }
+                        }
+                        tracing::info!(
+                            event = "real_profit",
+                            tx_hash = ?tx_hash,
+                            "Transaction receipt retrieved"
+                        );
+                    }
+
                     return Ok(tx_hash);
                 }
                 TransactionEvent::Propagated(kind) => {
@@ -168,10 +200,11 @@ where
                         "Transaction is queued (low gas price?)"
                     );
                 }
+                // Replaced, Discarded, Invalid
                 other => {
                     atomic_nonce.fetch_sub(1, Ordering::SeqCst);
                     tracing::error!(
-                        event = "transaction_failed",
+                        event = "transaction_dropped",
                         relayer = ?from,
                         nonce = nonce,
                         error = ?other,
