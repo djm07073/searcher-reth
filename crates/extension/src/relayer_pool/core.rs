@@ -159,18 +159,18 @@ where
                                 if sig == &Profit::SIGNATURE_HASH {
                                     let parsed = Profit::decode_log(log)?;
                                     tracing::info!(
-                                        event = "real_profit",
+                                        event = "profit_realized",
                                         token = ?parsed.token,
-                                        profit = ?parsed.profit,
-                                        "Get Profit"
+                                        profit = %parsed.profit,
+                                        "profit event received"
                                     );
                                 }
                             }
                         }
                         tracing::info!(
-                            event = "real_profit",
+                            event = "profit_receipt",
                             tx_hash = ?tx_hash,
-                            "Transaction receipt retrieved"
+                            "transaction receipt retrieved"
                         );
                     }
 

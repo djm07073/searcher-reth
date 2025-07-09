@@ -83,6 +83,16 @@ impl Strategy for PathFinder {
         // 2. Filter candidates based on liquidity and profit ranges
         let (max_profit, min_profit) = self.profit_range;
         let (min_liquidity, max_liquidity) = self.liquidity_range;
+
+        tracing::info!(
+            target: "path-finder",
+            event = "search_ranges",
+            min_liquidity = ?min_liquidity,
+            max_liquidity = ?max_liquidity,
+            min_profit = %min_profit,
+            max_profit = %max_profit,
+            "starting search with configured ranges",
+        );
         let found_max_profit = Arc::new(AtomicBool::new(false));
         let no_vault = self.get_vault() == Address::ZERO;
         if no_vault {
@@ -140,6 +150,15 @@ impl Strategy for PathFinder {
                         }
                     };
 
+                    tracing::info!(
+                        target: "path-finder",
+                        event = "profit_predicted",
+                        amount = %amount,
+                        profit = %net_profit,
+                        route = ?hops,
+                        "profit calculated for candidate",
+                    );
+
                     // 2-3. Filter out based on profit range
                     let route = if net_profit.ge(&max_profit) {
                         found_max_profit.store(true, Ordering::Relaxed);
@@ -147,15 +166,21 @@ impl Strategy for PathFinder {
                     } else if net_profit.ge(&min_profit) {
                         hops.clone()
                     } else {
+                        tracing::info!(
+                            target: "path-finder",
+                            event = "profit_rejected",
+                            profit = %net_profit,
+                            "profit below minimum threshold",
+                        );
                         return acc;
                     };
 
                     tracing::info!(
-                        target = "path-finder",
-                        action = "catch profit before filtering out dirty states",
-                        profit = ?net_profit,
+                        target: "path-finder",
+                        event = "profit_after_filter",
+                        profit = %net_profit,
                         route = ?route.clone(),
-                        "getProfitCall succeeded with output",
+                        "candidate passed profit filter",
                     );
 
                     if no_vault {
@@ -186,11 +211,11 @@ impl Strategy for PathFinder {
                     };
 
                     tracing::info!(
-                        target = "path-finder",
-                        action = "catch profit after filtering out dirty states",
-                        profit = ?net_profit,
+                        target: "path-finder",
+                        event = "profit_after_dirty_filter",
+                        profit = %net_profit,
                         route = ?route.clone(),
-                        "getProfitCall succeeded with output",
+                        "candidate passed dirty state filter",
                     );
 
                     // 2-5. accumulate result
