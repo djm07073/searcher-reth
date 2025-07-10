@@ -19,8 +19,7 @@ use reth_primitives::{LogData, Recovered, TransactionSigned};
 use reth_provider::{AccountReader, BlockReaderIdExt, ChainSpecProvider, ReceiptProvider};
 use reth_tracing::tracing;
 use reth_transaction_pool::EthPooledTransaction;
-use searcher_reth_manager::SignalType;
-use searcher_reth_strategy::config::gas::GasConfig;
+use searcher_reth_manager::{gas::GasConfig, SignalType};
 use tokio::sync::{
     broadcast,
     mpsc::{self, Receiver, Sender},

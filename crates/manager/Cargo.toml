@@ -9,3 +9,10 @@ license.workspace = true
 reth-tracing.workspace = true
 tokio.workspace = true
 eyre.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
+alloy-network.workspace = true
+alloy-signer-local.workspace = true
+alloy-primitives.workspace = true
+reth-revm.workspace = true
+serde_json.workspace = true

@@ -42,6 +42,5 @@ rayon.workspace = true
 reth-transaction-pool.workspace = true
 
 #searcher-reth
-searcher-reth-config.workspace = true
-searcher-reth-core.workspace = true
+searcher-reth-manager.workspace = true
 

@@ -6,9 +6,9 @@ use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
     exex::SearcherExEx,
-    strategy::config::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID},
     util::signal_manager::SignalManager,
 };
+use searcher_reth_manager::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));

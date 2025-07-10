@@ -14,7 +14,7 @@ use reth_revm::{
     state::{AccountInfo, Bytecode, EvmState},
 };
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_config::{strategy::StrategyConfig, types::Candidate};
+use searcher_reth_manager::{strategy::StrategyConfig, types::Candidate};
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 

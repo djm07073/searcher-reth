@@ -9,11 +9,9 @@ responsibility which is summarized below.
 | Crate | Role |
 |-------|------|
 | **bin/searcher-reth** | Binary that launches Reth with the searcher extension installed. |
-| **crates/config** | Loading and managing configuration files and candidate data. |
-| **crates/core** | Fundamental traits and constants shared across strategies. |
-| **crates/strategy** | Implementation of searcher strategies (e.g. path finding). |
+| **crates/manager** | Configuration loading and signal handling utilities. |
+| **crates/strategy** | Strategy implementations and core traits. |
 | **crates/extension** | Glue code that runs inside Reth's ExEx framework and handles relaying transactions. |
-| **crates/util** | Utilities such as logging setup and signal handling. |
 
 ## Flow
 

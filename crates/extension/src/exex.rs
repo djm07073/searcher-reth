@@ -16,9 +16,8 @@ use reth_provider::{
 };
 use reth_tracing::tracing::{self};
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
-use searcher_reth_manager::SignalType;
+use searcher_reth_manager::{manager::ConfigManager, strategy::CommonStrategyConfig, SignalType};
 use searcher_reth_strategy::{
-    config::{manager::ConfigManager, strategy::CommonStrategyConfig},
     core::strategy::Strategy,
     path_finding::PathFinder,
 };
