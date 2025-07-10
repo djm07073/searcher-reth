@@ -22,8 +22,8 @@ use reth_revm::{
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
-    strategy::{CommonStrategyConfig, StrategyConfig},
-    types::Candidate,
+    common::{CommonStrategyConfig, StrategyConfig},
+    types::Candidate
 };
 use crate::core::strategy::Strategy;
 

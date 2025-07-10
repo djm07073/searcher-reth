@@ -1,15 +1,15 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{ AtomicUsize, Ordering };
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 
-pub struct RelayerWallet {
+pub struct WalletPool {
     wallet: EthereumWallet,
     idx: AtomicUsize,
     signers: Vec<Address>,
 }
 
-impl RelayerWallet {
+impl WalletPool {
     pub fn new(wallet: (EthereumWallet, Vec<Address>)) -> Self {
         let (wallet, signers) = wallet;
         Self { wallet, idx: AtomicUsize::new(0), signers }
@@ -22,5 +22,9 @@ impl RelayerWallet {
 
     pub fn wallet(&self) -> &EthereumWallet {
         &self.wallet
+    }
+    
+    pub fn signers(&self) -> &[Address] {
+        &self.signers
     }
 }

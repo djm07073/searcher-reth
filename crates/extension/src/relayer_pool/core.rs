@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use alloy_consensus::TxReceipt;
-use alloy_eips::{Encodable2718, calc_next_block_base_fee};
-use alloy_network::{Ethereum, EthereumWallet, NetworkWallet};
-use alloy_primitives::{Address, ChainId, FixedBytes, TxKind};
+use alloy_eips::{ Encodable2718, calc_next_block_base_fee };
+use alloy_network::{ Ethereum, NetworkWallet };
+use alloy_primitives::{ Address, ChainId, FixedBytes, TxKind };
 use alloy_sol_types::SolEvent;
 use eyre::Result;
 use futures_util::StreamExt;
@@ -11,31 +11,20 @@ use reth::{
     api::FullNodeComponents,
     core::primitives::AlloyBlockHeader,
     network::NetworkInfo,
-    rpc::types::{AccessList, TransactionInput, TransactionRequest},
-    transaction_pool::{TransactionEvent, TransactionOrigin, TransactionPool},
+    rpc::types::{ AccessList, TransactionInput, TransactionRequest },
+    transaction_pool::{ TransactionEvent, TransactionOrigin, TransactionPool },
 };
 use reth_chainspec::EthChainSpec;
-use reth_primitives::{LogData, Recovered, TransactionSigned};
-use reth_provider::{AccountReader, BlockReaderIdExt, ChainSpecProvider, ReceiptProvider};
+use reth_primitives::{ LogData, Recovered, TransactionSigned };
+use reth_provider::{ AccountReader, BlockReaderIdExt, ChainSpecProvider, ReceiptProvider };
 use reth_tracing::tracing;
 use reth_transaction_pool::EthPooledTransaction;
-use searcher_reth_manager::{gas::GasConfig, SignalType};
-use tokio::sync::{
-    broadcast,
-    mpsc::{self, Receiver, Sender},
-};
+use searcher_reth_manager::{ gas::GasConfig, SignalType };
+use tokio::sync::{ broadcast, mpsc::{ self, Receiver, Sender } };
 
 use crate::relayer_pool::types::Profit;
 
-use super::wallet::RelayerWallet;
-
-pub struct RelayerPool<FC: FullNodeComponents> {
-    fnc: FC,
-    wallet: RelayerWallet,
-    chain_id: ChainId,
-    signal_rx: broadcast::Receiver<SignalType>,
-    gas_config: GasConfig,
-}
+use super::wallet::WalletPool;
 
 #[derive(Debug)]
 pub struct RelayerMessage {
@@ -44,23 +33,30 @@ pub struct RelayerMessage {
     pub access_list: AccessList,
 }
 
+pub struct RelayerPool<FC: FullNodeComponents> {
+    fnc: FC,
+    wallet: Arc<WalletPool>,
+    chain_id: ChainId,
+    signal_rx: broadcast::Receiver<SignalType>,
+    gas_config: GasConfig,
+}
+
 const BASE_FEE: u64 = 100_000_000;
 
 impl<FC> RelayerPool<FC>
-where
-    FC: FullNodeComponents,
-    FC::Pool: TransactionPool<Transaction = EthPooledTransaction>,
-    FC::Provider: BlockReaderIdExt + ReceiptProvider + AccountReader + ChainSpecProvider,
-    FC::Network: NetworkInfo,
+    where
+        FC: FullNodeComponents,
+        FC::Pool: TransactionPool<Transaction = EthPooledTransaction>,
+        FC::Provider: BlockReaderIdExt + ReceiptProvider + AccountReader + ChainSpecProvider,
+        FC::Network: NetworkInfo
 {
     pub async fn new(
         fnc: FC,
-        wallet: (EthereumWallet, Vec<Address>),
+        wallet: Arc<WalletPool>,
         signal_rx: broadcast::Receiver<SignalType>,
-        gas_config: GasConfig,
+        gas_config: GasConfig
     ) -> Result<Self> {
         let chain_id = fnc.network().chain_id();
-        let wallet = RelayerWallet::new(wallet);
         Ok(Self { fnc, chain_id, wallet, signal_rx, gas_config })
     }
 
@@ -78,7 +74,7 @@ where
 
     async fn send_and_subscribe_transaction(
         &self,
-        message: RelayerMessage,
+        message: RelayerMessage
     ) -> Result<FixedBytes<32>> {
         // 0. if message.to is zero or calldata is empty, skip sending
         if message.to == Address::ZERO || message.calldata.is_empty() {
@@ -102,33 +98,41 @@ where
         let GasConfig { gas_limit, priority_fee } = self.gas_config;
         let block_header = match provider.pending_header() {
             Ok(Some(header)) => header,
-            Ok(None) => match provider.latest_header() {
-                Ok(Some(header)) => header,
-                Ok(None) => {
-                    return Err(eyre::eyre!(
-                        "Failed to get latest block header; chain must be initialized (no header found)"
-                    ));
+            Ok(None) =>
+                match provider.latest_header() {
+                    Ok(Some(header)) => header,
+                    Ok(None) => {
+                        return Err(
+                            eyre::eyre!(
+                                "Failed to get latest block header; chain must be initialized (no header found)"
+                            )
+                        );
+                    }
+                    Err(e) => {
+                        return Err(eyre::eyre!("Failed to get latest block header: {:?}", e));
+                    }
                 }
-                Err(e) => {
-                    return Err(eyre::eyre!("Failed to get latest block header: {:?}", e));
+            Err(e) =>
+                match provider.latest_header() {
+                    Ok(Some(header)) => header,
+                    Ok(None) => {
+                        return Err(
+                            eyre::eyre!(
+                                "Failed to get latest block header; chain must be initialized (no header found), pending_header error: {:?}",
+                                e
+                            )
+                        );
+                    }
+                    Err(e2) => {
+                        return Err(
+                            eyre::eyre!(
+                                "Failed to get latest and pending block header: pending_header error: {:?}, latest_header error: {:?}",
+                                e,
+                                e2
+                            )
+                        );
+                    }
                 }
-            },
-            Err(e) => match provider.latest_header() {
-                Ok(Some(header)) => header,
-                Ok(None) => {
-                    return Err(eyre::eyre!(
-                        "Failed to get latest block header; chain must be initialized (no header found), pending_header error: {:?}",
-                        e
-                    ));
-                }
-                Err(e2) => {
-                    return Err(eyre::eyre!(
-                        "Failed to get latest and pending block header: pending_header error: {:?}, latest_header error: {:?}",
-                        e,
-                        e2
-                    ));
-                }
-            },
         };
 
         let num_hash = block_header.num_hash();
@@ -141,7 +145,7 @@ where
             parent_gas_used,
             parent_block_gas_limit,
             parent_block_base_fee,
-            base_fee_params,
+            base_fee_params
         );
         // TODO: reasonable formula?
         let max_fee_per_gas = (base_fee as u128) * 2 + priority_fee;
@@ -160,8 +164,8 @@ where
             ..Default::default()
         };
 
-        let tx_envelope = NetworkWallet::<Ethereum>::sign_request(self.wallet.wallet(), request)
-            .await
+        let tx_envelope = NetworkWallet::<Ethereum>
+            ::sign_request(self.wallet.wallet(), request).await
             .map_err(|e| eyre::eyre!("Failed to sign transaction: {:?}", e))?;
 
         let reth_signed_tx: TransactionSigned = tx_envelope.into();
@@ -171,11 +175,9 @@ where
         let eth_pooled_tx = EthPooledTransaction::new(recovered_tx, len);
 
         // 4. Add the transaction to the pool and subscribe to its events while mined or dropped
-        let mut tx_events = self
-            .fnc
+        let mut tx_events = self.fnc
             .pool()
-            .add_transaction_and_subscribe(TransactionOrigin::Local, eth_pooled_tx)
-            .await
+            .add_transaction_and_subscribe(TransactionOrigin::Local, eth_pooled_tx).await
             .map_err(|e| eyre::eyre!("Failed to add transaction to pool: {:?}", e))?;
         let tx_hash = tx_events.hash();
 
@@ -191,8 +193,7 @@ where
                         "Transaction successfully mined"
                     );
 
-                    let receipt = self
-                        .fnc
+                    let receipt = self.fnc
                         .provider()
                         .receipt_by_hash(tx_hash)
                         .map_err(|e| eyre::eyre!("Failed to get transaction: {:?}", e))?;
@@ -259,7 +260,7 @@ where
     async fn handle_relayer_messages(
         self: Arc<Self>,
         mut message_rx: Receiver<RelayerMessage>,
-        mut signal_rx: broadcast::Receiver<SignalType>,
+        mut signal_rx: broadcast::Receiver<SignalType>
     ) {
         let mut is_paused = true;
 
