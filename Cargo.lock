@@ -9085,53 +9085,7 @@ dependencies = [
  "reth-revm",
  "reth-tracing",
  "searcher-reth-extension",
- "tokio",
-]
-
-[[package]]
-name = "searcher-reth-config"
-version = "0.1.0"
-dependencies = [
- "alloy-network",
- "alloy-primitives",
- "alloy-signer-local",
- "eyre",
- "reth-revm",
- "serde",
- "serde_json",
- "toml",
-]
-
-[[package]]
-name = "searcher-reth-core"
-version = "0.0.0"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-genesis",
- "alloy-network",
- "alloy-primitives",
- "alloy-rlp",
- "alloy-rpc-types",
- "alloy-signer-local",
- "alloy-sol-types",
- "eyre",
- "futures-util",
- "rayon",
- "reth",
- "reth-chainspec",
- "reth-evm",
- "reth-execution-errors",
- "reth-execution-types",
- "reth-exex",
- "reth-node-api",
- "reth-node-ethereum",
- "reth-primitives",
- "reth-provider",
- "reth-revm",
- "reth-tracing",
- "reth-transaction-pool",
- "searcher-reth-config",
+ "searcher-reth-manager",
  "tokio",
 ]
 
@@ -9174,9 +9128,16 @@ dependencies = [
 name = "searcher-reth-manager"
 version = "0.0.0"
 dependencies = [
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-signer-local",
  "eyre",
+ "reth-revm",
  "reth-tracing",
+ "serde",
+ "serde_json",
  "tokio",
+ "toml",
 ]
 
 [[package]]
@@ -9208,8 +9169,7 @@ dependencies = [
  "reth-revm",
  "reth-tracing",
  "reth-transaction-pool",
- "searcher-reth-config",
- "searcher-reth-core",
+ "searcher-reth-manager",
  "tokio",
 ]
 
