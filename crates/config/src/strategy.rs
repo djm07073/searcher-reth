@@ -2,6 +2,8 @@ use alloy_primitives::{Address, Bytes, U256};
 use reth_revm::state::Bytecode;
 use serde::{Deserialize, Serialize};
 
+use crate::gas::GasConfig;
+
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +21,7 @@ pub trait CommonStrategyConfig {
     fn get_liquidity_range(&self) -> (U256, U256);
     fn get_contract(&self) -> Bytecode;
     fn get_profit_range(&self) -> (U256, U256);
+    fn get_gas_config(&self) -> GasConfig;
 }
 
 const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -67,6 +70,12 @@ impl CommonStrategyConfig for StrategyConfig {
             } // TODO: Add other strategy configurations
         }
     }
+
+    fn get_gas_config(&self) -> GasConfig {
+        match self {
+            StrategyConfig::PathFinder(config) => config.gas_config.clone(),
+        }
+    }
 }
 
 /// Configuration for the PathFinder strategy
@@ -83,6 +92,9 @@ pub struct PathFinderConfig {
      * 1ether(100 USDC) */
     pub max_profit: String,
     pub min_profit: String,
+
+    // gas configuration
+    pub gas_config: GasConfig,
 }
 
 // TODO: Add other strategy configurations
@@ -100,6 +112,10 @@ mod tests {
             min_liquidity: "100".to_string(),  // 100 USDC
             max_profit: "100".to_string(),     // 100 USDC
             min_profit: "0.001".to_string(),   // 0.001 USDC
+            gas_config: GasConfig {
+                priority_fee: 1_000_000_000, // 1 Gwei
+                gas_limit: 1_000_000,        // 1 million gas
+            },
         };
         let strategy = StrategyConfig::PathFinder(cfg.clone());
 

@@ -8,7 +8,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
     Context, MainBuilder, MainContext, SystemCallEvm,
-    context::result::ResultAndState,
+    context::result::{ExecResultAndState, ExecutionResult},
     database::StateProviderDatabase,
     db::CacheDB,
     state::{AccountInfo, Bytecode, EvmState},
@@ -17,23 +17,6 @@ use reth_transaction_pool::PoolTransaction;
 use searcher_reth_config::{strategy::StrategyConfig, types::Candidate};
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
-
-type StrategyContext<'a, DB> = Context<
-    reth_revm::context::BlockEnv,
-    reth_revm::context::TxEnv,
-    reth_revm::context::CfgEnv,
-    CacheDB<StateProviderDatabase<&'a LatestStateProviderRef<'a, DB>>>,
->;
-
-pub type StrategyEvm<'a, DB> = reth_revm::context::Evm<
-    StrategyContext<'a, DB>,
-    (),
-    reth_revm::handler::instructions::EthInstructions<
-        reth_revm::interpreter::interpreter::EthInterpreter,
-        StrategyContext<'a, DB>,
-    >,
-    reth_revm::handler::EthPrecompiles,
->;
 
 pub type DirtyStates = HashMap<Address, HashSet<U256>>;
 
@@ -73,7 +56,7 @@ pub trait Strategy {
                 let data = tx.input().clone();
                 let db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
                 let mut evm = Context::mainnet().with_db(db).build_mainnet();
-                let result = evm.transact_system_call(data, to).ok()?;
+                let result = evm.transact_system_call_finalize(to, data).ok()?;
                 let dirty_state: DirtyStates = result
                     .state
                     .iter()
@@ -130,7 +113,7 @@ pub trait Strategy {
         &self,
         provider: &'a LatestStateProviderRef<'a, DB>,
         encoded: Vec<u8>,
-    ) -> Result<ResultAndState, Error>
+    ) -> Result<ExecutionResult, Error>
     where
         DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
@@ -146,7 +129,7 @@ pub trait Strategy {
         );
 
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
-        let result = evm.transact_system_call(encoded.into(), STRATEGY_CONTRACT_ADDRESS)?;
+        let result = evm.transact_system_call(STRATEGY_CONTRACT_ADDRESS, encoded.into())?;
         Ok(result)
     }
 
@@ -154,14 +137,14 @@ pub trait Strategy {
         &self,
         provider: &'a LatestStateProviderRef<'a, DB>,
         encoded: Vec<u8>,
-    ) -> Result<ResultAndState, Error>
+    ) -> Result<ExecResultAndState<ExecutionResult>, Error>
     where
         DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         let vault = self.get_vault();
         let db = CacheDB::new(StateProviderDatabase::new(provider));
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
-        let result = evm.transact_system_call(encoded.into(), vault)?;
+        let result = evm.transact_system_call_finalize(vault, encoded.into())?;
         Ok(result)
     }
 }

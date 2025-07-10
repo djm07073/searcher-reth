@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use alloy_consensus::BlockHeader;
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 use eyre::Result;
@@ -12,7 +11,8 @@ use reth::network::NetworkInfo;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
-    BlockHashReader, DatabaseProviderFactory, LatestStateProviderRef, StateCommitmentProvider,
+    AccountReader, BlockHashReader, BlockReaderIdExt, ChainSpecProvider, DatabaseProviderFactory,
+    LatestStateProviderRef, ReceiptProvider, StateCommitmentProvider,
 };
 use reth_tracing::tracing::{self};
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
@@ -52,6 +52,7 @@ impl SearcherExEx {
         Node::Pool: TransactionPool<Transaction = EthPooledTransaction>,
         <<Node as FullNodeTypes>::Provider as DatabaseProviderFactory>::Provider:
             BlockHashReader + StateCommitmentProvider,
+        Node::Provider: BlockReaderIdExt + ReceiptProvider + AccountReader + ChainSpecProvider,
     {
         let wallet = self.wallet.clone();
         let signal_rx = self.signal_rx.resubscribe();
@@ -60,8 +61,15 @@ impl SearcherExEx {
         let strategy = config.read().unwrap().get_strategy(exex_id)?;
         let vault = strategy.get_vault();
         Ok(async move {
-            let relayer_pool =
-                Arc::new(RelayerPool::new(ctx.components.clone(), wallet, signal_rx).await?);
+            let relayer_pool = Arc::new(
+                RelayerPool::new(
+                    ctx.components.clone(),
+                    wallet,
+                    signal_rx,
+                    strategy.get_gas_config(),
+                )
+                .await?,
+            );
             let relayer_tx = relayer_pool.start().await?;
             tracing::info!(
                 target: "reth-exex",
@@ -73,7 +81,6 @@ impl SearcherExEx {
             while let Some(notification) = ctx.notifications.next().await {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
-                    let block_num = block.number();
                     let num_hash = block.num_hash();
                     let mut path_finder = PathFinder::new(&strategy);
                     let bytecode = path_finder.get_code();
@@ -112,7 +119,7 @@ impl SearcherExEx {
                         target: "reth-exex",
                         event = "filter_candidates",
                         success = profitable_candidates.is_none(),
-                        height = block_num,
+                        num_hash = ?num_hash,
                         "No profitable candidates found"
                     );
                     if profitable_candidates.is_none() {
@@ -133,7 +140,7 @@ impl SearcherExEx {
                                 target: "reth-exex",
                                 event = "send_candidates_to_relayer_pool",
                                 success = true,
-                                height = block_num,
+                                num_hash = ?num_hash,
                                 "Successfully sent candidates to relayer pool"
                             ),
                             Err(e) => tracing::error!(
@@ -141,7 +148,7 @@ impl SearcherExEx {
                                 event = "send_candidates_to_relayer_pool",
                                 success = false,
                                 error = ?e,
-                                height = block_num,
+                                num_hash = ?num_hash,
                                 "Failed to send candidates to relayer pool"
                             ),
                         }
@@ -153,7 +160,7 @@ impl SearcherExEx {
                             tracing::info!(
                                 target: "reth-exex",
                                 event = "reload_config",
-                                height = block_num,
+                                num_hash = ?num_hash,
                                 "Reloading configuration"
                             );
                             config.write().unwrap().reload()?;

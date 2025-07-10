@@ -304,7 +304,7 @@ impl PathFinder {
             );
             return None;
         }
-        match result.unwrap().result {
+        match result.unwrap() {
             ExecutionResult::Success { output: Output::Call(value), .. } => {
                 Some(U256::abi_decode(&value).unwrap_or_default())
             }
