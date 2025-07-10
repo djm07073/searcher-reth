@@ -1,13 +1,9 @@
-use std::{
-    future::Future,
-    sync::{Arc, RwLock},
-};
+use std::{future::Future, sync::{Arc, RwLock}};
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
 use eyre::Result;
 use futures_util::StreamExt;
-use reth::network::NetworkInfo;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::{FullNodeComponents, FullNodeTypes};
 use reth_provider::{
@@ -16,7 +12,7 @@ use reth_provider::{
 };
 use reth_tracing::tracing::{self};
 use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
-use searcher_reth_manager::{manager::ConfigManager, strategy::CommonStrategyConfig, SignalType};
+use searcher_reth_manager::{strategy::{CommonStrategyConfig, StrategyConfig}, SignalType};
 use searcher_reth_strategy::{
     core::strategy::Strategy,
     path_finding::PathFinder,
@@ -28,7 +24,7 @@ use crate::relayer_pool::{RelayerMessage, RelayerPool};
 pub struct SearcherExEx {
     pub wallet: (EthereumWallet, Vec<Address>),
     pub signal_rx: broadcast::Receiver<SignalType>,
-    pub config: Arc<RwLock<ConfigManager>>,
+    pub strategy: Arc<RwLock<StrategyConfig>>,
 }
 
 // impl of exex
@@ -36,14 +32,14 @@ impl SearcherExEx {
     pub fn new(
         wallet: (EthereumWallet, Vec<Address>),
         signal_rx: broadcast::Receiver<SignalType>,
-        config: Arc<RwLock<ConfigManager>>,
+        strategy: StrategyConfig,
     ) -> Self {
-        Self { wallet, signal_rx, config }
+        Self { wallet, signal_rx, strategy: Arc::new(RwLock::new(strategy)) }
     }
 
     pub async fn exex<Node>(
         self,
-        exex_id: &str,
+        _exex_id: &str,
         mut ctx: ExExContext<Node>,
     ) -> Result<impl Future<Output = Result<()>>>
     where
@@ -56,16 +52,14 @@ impl SearcherExEx {
         let wallet = self.wallet.clone();
         let signal_rx = self.signal_rx.resubscribe();
         let mut signal_rx_config = self.signal_rx.resubscribe();
-        let config = self.config.clone();
-        let strategy = config.read().unwrap().get_strategy(exex_id)?;
-        let vault = strategy.get_vault();
+        let strategy = self.strategy.clone();
         Ok(async move {
             let relayer_pool = Arc::new(
                 RelayerPool::new(
                     ctx.components.clone(),
                     wallet,
                     signal_rx,
-                    strategy.get_gas_config(),
+                    strategy.read().unwrap().get_gas_config(),
                 )
                 .await?,
             );
@@ -81,7 +75,9 @@ impl SearcherExEx {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
                     let num_hash = block.num_hash();
-                    let mut path_finder = PathFinder::new(&strategy);
+                    let current_strategy = { strategy.read().unwrap().clone() };
+                    let vault = current_strategy.get_vault();
+                    let mut path_finder = PathFinder::new(&current_strategy);
                     let bytecode = path_finder.get_code();
 
                     // extension is not setup yet, skip
@@ -107,7 +103,7 @@ impl SearcherExEx {
 
                     // 3. Filter candidates by path finder based on the latest state and pending
                     // transactions
-                    let candidates = config.write().unwrap().get_candidates(chain_id)?;
+                    let candidates = current_strategy.get_candidates(chain_id)?;
                     let profitable_candidates = path_finder.find_profitable_candidates(
                         latest_state_provider,
                         pending_txs,
@@ -152,9 +148,8 @@ impl SearcherExEx {
                             ),
                         }
                     });
-
-                    // 5. reload if signal received after sending transactions
-                    if let Ok(signal) = signal_rx_config.recv().await {
+                    // 5. reload strategy if signal received
+                    if let Ok(signal) = signal_rx_config.try_recv() {
                         if SignalType::Reload == signal {
                             tracing::info!(
                                 target: "reth-exex",
@@ -162,7 +157,7 @@ impl SearcherExEx {
                                 num_hash = ?num_hash,
                                 "Reloading configuration"
                             );
-                            config.write().unwrap().reload()?;
+                            // no-op: strategy reload requires external updater
                         }
                     }
 

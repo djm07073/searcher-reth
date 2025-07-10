@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+
 
 use clap::Parser;
 use reth::chainspec::EthereumChainSpecParser;
@@ -9,10 +9,12 @@ use searcher_reth_extension::{
     util::signal_manager::SignalManager,
 };
 use searcher_reth_manager::{manager::ConfigManager, strategy::PATH_FINDER_EXEX_ID};
+use std::sync::{Arc, RwLock};
 
 fn main() -> eyre::Result<()> {
-    let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
-    let wallet = config.read().unwrap().get_wallet().unwrap();
+    let cfg = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
+    let wallet = cfg.read().unwrap().get_wallet().unwrap();
+    let strategy = cfg.read().unwrap().get_strategy(PATH_FINDER_EXEX_ID)?;
 
     reth::cli::Cli::<EthereumChainSpecParser>::parse().run(|builder, _| async move {
         // Spawn signal manager to handle signals
@@ -29,8 +31,13 @@ fn main() -> eyre::Result<()> {
         node_builder = node_builder.install_exex(PATH_FINDER_EXEX_ID, {
             let wallet = wallet.clone();
             let signal_manager = signal_manager.clone();
+            let strategy = strategy.clone();
             move |ctx| {
-                let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe(), config);
+                let searcher_exex = SearcherExEx::new(
+                    wallet,
+                    signal_manager.subscribe(),
+                    strategy.clone(),
+                );
                 searcher_exex.exex(PATH_FINDER_EXEX_ID, ctx)
             }
         });

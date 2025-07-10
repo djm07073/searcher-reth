@@ -21,22 +21,27 @@ use crate::{
 };
 
 pub struct ConfigManager {
-    // configuration from the file
+    /// Path to the configuration file. Used for reloads
+    config_path: PathBuf,
+    /// Configuration loaded from `config_path`
     config: SearcherConfig,
-    // flag to indicate if the configuration has changed
+    /// Flag indicating if the configuration has changed since the last reload
     config_changed: Arc<AtomicBool>,
-    // candidates loaded from the data file
-    candidates: Option<Vec<Candidate>>,
 }
 
 impl ConfigManager {
     pub fn from_file(path: &str) -> eyre::Result<Self> {
         let config = SearcherConfig::from_file(path)?;
-        Ok(Self { config, config_changed: Arc::new(AtomicBool::new(false)), candidates: None })
+        Ok(Self {
+            config_path: PathBuf::from(path),
+            config,
+            config_changed: Arc::new(AtomicBool::new(false)),
+        })
     }
 
     pub fn reload(&mut self) -> eyre::Result<()> {
-        self.config.reload()?;
+        let new_config = SearcherConfig::from_file(self.config_path.to_str().unwrap())?;
+        self.config = new_config;
         self.config_changed.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -53,31 +58,12 @@ impl ConfigManager {
             .ok_or_else(|| eyre::eyre!("Strategy not found for exex_id: {}", exex_id))
     }
 
-    pub fn get_candidates(&mut self, chain_id: u64) -> eyre::Result<Vec<Candidate>> {
-        let candidates = if self.candidates.is_none() || self.config_changed.load(Ordering::Relaxed)
-        {
-            self.config_changed.store(false, Ordering::Relaxed);
-            let candidates = self.config.data.get_candidates(chain_id)?;
-            self.candidates = Some(candidates.clone());
-            candidates
-        } else {
-            self.candidates.clone().unwrap()
-        };
-        Ok(candidates)
-    }
 }
 
 impl SearcherConfig {
     fn from_file(path: &str) -> eyre::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         Ok(toml::from_str(&content)?)
-    }
-
-    fn reload(&mut self) -> eyre::Result<()> {
-        let content = std::fs::read_to_string(&self.data.path)?;
-        let new_config: SearcherConfig = toml::from_str(&content)?;
-        *self = new_config;
-        Ok(())
     }
 }
 
@@ -86,7 +72,6 @@ type ExExId = String;
 #[serde(rename_all = "kebab-case")]
 pub struct SearcherConfig {
     pub relayer: TxRelayerConfig,
-    pub data: DataConfig,
     pub logging: LoggingConfig,
     #[serde(default, rename = "strategy")]
     pub strategies: HashMap<ExExId, StrategyConfig>,
@@ -184,14 +169,12 @@ pub struct LoggingConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::strategy::{PATH_FINDER_EXEX_ID, StrategyConfig};
     use std::fs;
 
     const CONFIG_V1: &str = r#"
         [relayer]
         mnemonic = "mnemonic1"
-
-        [data]
-        path = "/tmp/db1.json"
 
         [logging]
         level = "info"
@@ -199,13 +182,15 @@ mod tests {
 
         [strategy]
         [strategy.path-finder]
-        type = "path-finder" 
+        type = "path-finder"
         vault = "0x0000000000000000000000000000000000000000"
         max-liquidity = "1000"
         min-liquidity = "100"
         contract = "0x00"
         max-profit-ratio = "0.005"
         min-profit-ratio = "0.001"
+        [strategy.path-finder.data]
+        path = "/tmp/db1.json"
     "#;
 
     #[test]
@@ -213,9 +198,42 @@ mod tests {
         let path: PathBuf = std::env::temp_dir().join("searcher_config_test.toml");
         fs::write(&path, CONFIG_V1).unwrap();
 
-        let cfg = SearcherConfig::from_file(path.to_str().unwrap()).unwrap();
-        assert_eq!(cfg.relayer.mnemonic, "mnemonic1");
-        assert_eq!(cfg.logging.level, "info");
+        let mut manager = ConfigManager::from_file(path.to_str().unwrap()).unwrap();
+        assert_eq!(manager.get_wallet().is_ok(), true);
+        assert_eq!(manager.get_strategy(PATH_FINDER_EXEX_ID).is_ok(), true);
+
+        // write new config
+        const CONFIG_V2: &str = r#"
+        [relayer]
+        mnemonic = "mnemonic2"
+
+        [logging]
+        level = "debug"
+
+        [strategy]
+        [strategy.path-finder]
+        type = "path-finder"
+        vault = "0x0000000000000000000000000000000000000000"
+        max-liquidity = "1000"
+        min-liquidity = "100"
+        contract = "0x00"
+        max-profit-ratio = "0.005"
+        min-profit-ratio = "0.001"
+        [strategy.path-finder.data]
+        path = "/tmp/db1.json"
+        "#;
+        fs::write(&path, CONFIG_V2).unwrap();
+
+        manager.reload().unwrap();
+
+        let strategy = manager.get_strategy(PATH_FINDER_EXEX_ID).unwrap();
+        assert_eq!(manager.config.relayer.mnemonic, "mnemonic2");
+        assert_eq!(manager.config.logging.level, "debug");
+        match strategy {
+            StrategyConfig::PathFinder(cfg) => {
+                assert_eq!(cfg.data.path, PathBuf::from("/tmp/db1.json"));
+            }
+        }
 
         let _ = fs::remove_file(&path);
     }

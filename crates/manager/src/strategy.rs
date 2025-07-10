@@ -22,6 +22,7 @@ pub trait CommonStrategyConfig {
     fn get_contract(&self) -> Bytecode;
     fn get_profit_range(&self) -> (U256, U256);
     fn get_gas_config(&self) -> GasConfig;
+    fn get_candidates(&self, chain_id: u64) -> eyre::Result<Vec<crate::types::Candidate>>;
 }
 
 const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -76,6 +77,12 @@ impl CommonStrategyConfig for StrategyConfig {
             StrategyConfig::PathFinder(config) => config.gas_config.clone(),
         }
     }
+
+    fn get_candidates(&self, chain_id: u64) -> eyre::Result<Vec<crate::types::Candidate>> {
+        match self {
+            StrategyConfig::PathFinder(cfg) => cfg.data.get_candidates(chain_id),
+        }
+    }
 }
 
 /// Configuration for the PathFinder strategy
@@ -95,6 +102,7 @@ pub struct PathFinderConfig {
 
     // gas configuration
     pub gas_config: GasConfig,
+    pub data: crate::manager::DataConfig,
 }
 
 // TODO: Add other strategy configurations
@@ -116,6 +124,7 @@ mod tests {
                 priority_fee: 1_000_000_000, // 1 Gwei
                 gas_limit: 1_000_000,        // 1 million gas
             },
+            data: crate::manager::DataConfig { path: std::path::PathBuf::from("/tmp/data.json") },
         };
         let strategy = StrategyConfig::PathFinder(cfg.clone());
 
