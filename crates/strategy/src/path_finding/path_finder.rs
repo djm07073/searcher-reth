@@ -6,6 +6,7 @@ use std::{
     },
 };
 
+use crate::core::strategy::Strategy;
 use alloy_primitives::{Address, B256, U256};
 use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::{SolCall, SolValue};
@@ -23,9 +24,9 @@ use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
     common::{CommonStrategyConfig, StrategyConfig},
-    types::Candidate
+    gas::GasConfig,
+    types::Candidate,
 };
-use crate::core::strategy::Strategy;
 
 use crate::path_finding::types::executeCall;
 
@@ -37,34 +38,56 @@ const INV_GOLDEN_RATIO_NUM: u128 = 618_033_988_749_894_848;
 const INV_GOLDEN_RATIO_DEN: u128 = 1_000_000_000_000_000_000;
 
 pub struct PathFinder {
-    contract: Bytecode,
-    vault: Address,
-    liquidity_range: (U256, U256),
-    profit_range: (U256, U256),
+    config: StrategyConfig,
+    candidates: Option<Vec<Candidate>>,
 }
 
 impl Strategy for PathFinder {
     type Action = Hop;
 
-    fn new(config: &StrategyConfig) -> Self {
-        let contract = config.get_contract();
-        let vault = config.get_vault();
-        let (max_profit, min_profit) = config.get_profit_range();
-        let (max_liquidity, min_liquidity) = config.get_liquidity_range();
-        Self {
-            contract,
-            vault,
-            liquidity_range: (min_liquidity, max_liquidity),
-            profit_range: (min_profit, max_profit),
+    fn new(config: StrategyConfig) -> Self {
+        Self { config: config.clone(), candidates: None }
+    }
+
+    fn gas_config(&self) -> GasConfig {
+        self.config.get_gas_config()
+    }
+
+    fn get_or_load_candidates(&mut self, chain_id: u64) -> Vec<Candidate> {
+        if let Some(candidates) = &self.candidates {
+            return candidates.clone();
+        }
+
+        match self.config.load_candidates(chain_id) {
+            std::result::Result::Ok(candidates) => {
+                tracing::info!(
+                    target: "path-finder",
+                    event = "candidates_loaded",
+                    count = candidates.len(),
+                    "Loaded {} candidates from configuration",
+                    candidates.len()
+                );
+                self.candidates = Some(candidates.clone());
+                candidates
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: "path-finder",
+                    event = "candidates_load_failed",
+                    error = ?e,
+                    "Failed to load candidates from configuration"
+                );
+                Vec::new()
+            }
         }
     }
 
     fn get_code(&self) -> Bytecode {
-        self.contract.clone()
+        self.config.get_contract()
     }
 
     fn get_vault(&self) -> Address {
-        self.vault
+        self.config.get_vault()
     }
 
     fn find_profitable_candidates<
@@ -91,8 +114,8 @@ impl Strategy for PathFinder {
             Self::collect_dirty_states_from_pending_txs(pending_txs, &latest_state_provider);
 
         // 2. Filter candidates based on liquidity and profit ranges
-        let (max_profit, min_profit) = self.profit_range;
-        let (min_liquidity, max_liquidity) = self.liquidity_range;
+        let (max_profit, min_profit) = self.config.get_profit_range();
+        let (min_liquidity, max_liquidity) = self.config.get_liquidity_range();
 
         tracing::info!(
             target: "path-finder",

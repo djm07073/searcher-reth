@@ -1,23 +1,20 @@
 use std::collections::HashMap;
 
-use alloy_primitives::{ Address, FixedBytes, U256, address, map::HashSet };
-use alloy_rpc_types::{ AccessList, AccessListItem };
+use alloy_primitives::{Address, FixedBytes, U256, address, map::HashSet};
+use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
 use eyre::Error;
-use rayon::iter::{ IntoParallelRefIterator, ParallelIterator };
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
-    Context,
-    MainBuilder,
-    MainContext,
-    SystemCallEvm,
-    context::result::{ ExecResultAndState, ExecutionResult },
+    Context, MainBuilder, MainContext, SystemCallEvm,
+    context::result::{ExecResultAndState, ExecutionResult},
     database::StateProviderDatabase,
     db::CacheDB,
-    state::{ AccountInfo, Bytecode, EvmState },
+    state::{AccountInfo, Bytecode, EvmState},
 };
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_manager::{ common::StrategyConfig, types::Candidate };
+use searcher_reth_manager::{common::StrategyConfig, gas::GasConfig, types::Candidate};
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 
@@ -27,7 +24,11 @@ pub trait Strategy {
     type Action: SolStruct + Clone;
 
     /// Creates Strategy of PathFinder with the given provider and contract bytecode.
-    fn new(config: &StrategyConfig) -> Self;
+    fn new(config: StrategyConfig) -> Self;
+
+    fn gas_config(&self) -> GasConfig;
+
+    fn get_or_load_candidates(&mut self, chain_id: u64) -> Vec<Candidate>;
 
     fn get_code(&self) -> Bytecode;
 
@@ -38,17 +39,19 @@ pub trait Strategy {
         &mut self,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
-        candidates: Vec<Candidate>
-    )
-        -> Result<Option<(Vec<u8>, AccessList)>, Error>
-        where T: PoolTransaction, DB: DBProvider + BlockHashReader + StateCommitmentProvider;
+        candidates: Vec<Candidate>,
+    ) -> Result<Option<(Vec<u8>, AccessList)>, Error>
+    where
+        T: PoolTransaction,
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider;
 
     fn collect_dirty_states_from_pending_txs<T, DB>(
         pending_txs: Vec<T>,
-        latest_state_provider: &LatestStateProviderRef<'_, DB>
-    )
-        -> DirtyStates
-        where T: PoolTransaction, DB: DBProvider + BlockHashReader + StateCommitmentProvider
+        latest_state_provider: &LatestStateProviderRef<'_, DB>,
+    ) -> DirtyStates
+    where
+        T: PoolTransaction,
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         pending_txs
             .par_iter()
@@ -58,11 +61,13 @@ pub trait Strategy {
                 let db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
                 let mut evm = Context::mainnet().with_db(db).build_mainnet();
                 let result = evm.transact_system_call_finalize(to, data).ok()?;
-                let dirty_state: DirtyStates = result.state
+                let dirty_state: DirtyStates = result
+                    .state
                     .iter()
                     .filter(|(_, account)| account.is_touched())
                     .fold(HashMap::new(), |mut acc, (address, account)| {
-                        let changed_storage_keys: HashSet<U256> = account.storage
+                        let changed_storage_keys: HashSet<U256> = account
+                            .storage
                             .iter()
                             .filter(|(_, storage_slot)| storage_slot.is_changed())
                             .map(|(key, _)| *key)
@@ -88,7 +93,7 @@ pub trait Strategy {
     /// states.
     fn collect_clean_states(
         result_states: &EvmState,
-        dirty_states: &DirtyStates
+        dirty_states: &DirtyStates,
     ) -> Option<Vec<AccessListItem>> {
         let mut clean_states = Vec::<AccessListItem>::new();
         for (address, account) in result_states.iter() {
@@ -99,37 +104,33 @@ pub trait Strategy {
                 if account.storage.keys().any(|key| dirty_storage.contains(key)) {
                     return None;
                 }
-                let clean_storage_keys: Vec<FixedBytes<32>> = account.storage
-                    .keys()
-                    .map(|key| FixedBytes::<32>::from(*key))
-                    .collect();
-                clean_states.push(AccessListItem {
-                    address: *address,
-                    storage_keys: clean_storage_keys,
-                });
+                let clean_storage_keys: Vec<FixedBytes<32>> =
+                    account.storage.keys().map(|key| FixedBytes::<32>::from(*key)).collect();
+                clean_states
+                    .push(AccessListItem { address: *address, storage_keys: clean_storage_keys });
             }
         }
-        if clean_states.is_empty() {
-            None
-        } else {
-            Some(clean_states)
-        }
+        if clean_states.is_empty() { None } else { Some(clean_states) }
     }
 
     fn call_get_profit<'a, DB>(
         &self,
         provider: &'a LatestStateProviderRef<'a, DB>,
-        encoded: Vec<u8>
+        encoded: Vec<u8>,
     ) -> Result<ExecutionResult, Error>
-        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    where
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         let contract = self.get_code();
         let mut db = CacheDB::new(StateProviderDatabase::new(provider));
-        db.insert_account_info(STRATEGY_CONTRACT_ADDRESS, AccountInfo {
-            code_hash: contract.hash_slow(),
-            code: Some(contract.clone()),
-            ..Default::default()
-        });
+        db.insert_account_info(
+            STRATEGY_CONTRACT_ADDRESS,
+            AccountInfo {
+                code_hash: contract.hash_slow(),
+                code: Some(contract.clone()),
+                ..Default::default()
+            },
+        );
 
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
         let result = evm.transact_system_call(STRATEGY_CONTRACT_ADDRESS, encoded.into())?;
@@ -139,9 +140,10 @@ pub trait Strategy {
     fn call_execute<'a, DB>(
         &self,
         provider: &'a LatestStateProviderRef<'a, DB>,
-        encoded: Vec<u8>
+        encoded: Vec<u8>,
     ) -> Result<ExecResultAndState<ExecutionResult>, Error>
-        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    where
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         let vault = self.get_vault();
         let db = CacheDB::new(StateProviderDatabase::new(provider));

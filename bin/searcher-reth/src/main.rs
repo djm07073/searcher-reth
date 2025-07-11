@@ -1,15 +1,16 @@
-use std::sync::{ Arc, RwLock };
+use std::sync::{Arc, RwLock};
 
 use clap::Parser;
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
-use reth_tracing::tracing::{ self, error };
+use reth_tracing::tracing::{self, error};
 use searcher_reth_extension::{
     exex::SearcherExEx,
     relayer_pool::WalletPool,
+    strategy::{core::strategy::Strategy, path_finding::PathFinder},
     util::signal_manager::SignalManager,
 };
-use searcher_reth_manager::{ common::PATH_FINDER_EXEX_ID, manager::ConfigManager, SignalType };
+use searcher_reth_manager::{SignalType, common::PATH_FINDER_EXEX_ID, manager::ConfigManager};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
@@ -48,14 +49,19 @@ fn main() -> eyre::Result<()> {
             }
         });
 
-        // Install Exex for various st 
+        // Install Exex for various strategies
+        let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe());
         let mut node_builder = builder.node(EthereumNode::default());
+
+        // Install PathFinder strategy
         node_builder = node_builder.install_exex(PATH_FINDER_EXEX_ID, {
-            move |ctx| {
-                let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe(), config);
-                searcher_exex.exex(PATH_FINDER_EXEX_ID, ctx)
-            }
+            let path_finder_cfg =
+                config.clone().read().unwrap().get_strategy(PATH_FINDER_EXEX_ID).unwrap();
+            let path_finder = PathFinder::new(path_finder_cfg);
+            move |ctx| searcher_exex.run(ctx, path_finder)
         });
+
+        // TODO: Add other strategies here as needed
         let handle = node_builder.launch().await?;
         handle.wait_for_node_exit().await
     })

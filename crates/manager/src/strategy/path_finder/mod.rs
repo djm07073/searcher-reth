@@ -1,13 +1,16 @@
 pub mod types;
 
-use std::{ collections::HashMap, fs::File, io::BufReader, path::PathBuf };
+use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
 
 use alloy_primitives::hex;
 use eyre::eyre;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
-use crate::{ gas::GasConfig, strategy::path_finder::types::{ Route, RouteElement, RoutesMap }, types::Candidate };
-
+use crate::{
+    gas::GasConfig,
+    strategy::path_finder::types::{Route, RouteElement, RoutesMap},
+    types::Candidate,
+};
 
 /// Configuration for the PathFinder strategy
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,8 +41,7 @@ impl PathFinderConfig {
         }
 
         let file = File::open(&self.path)?;
-        let routes_data: RoutesMap = serde_json
-            ::from_reader(BufReader::new(file))
+        let routes_data: RoutesMap = serde_json::from_reader(BufReader::new(file))
             .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
 
         let chain_routes = routes_data
@@ -50,9 +52,8 @@ impl PathFinderConfig {
     }
 
     fn build_all_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
-        let token_map: HashMap<&String, Vec<&RouteElement>> = chain_routes.elements
-            .iter()
-            .fold(HashMap::new(), |mut acc, element| {
+        let token_map: HashMap<&String, Vec<&RouteElement>> =
+            chain_routes.elements.iter().fold(HashMap::new(), |mut acc, element| {
                 acc.entry(&element.src_token).or_default().push(element);
                 acc
             });
@@ -91,9 +92,9 @@ impl PathFinderConfig {
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::{ Address, U256 };
+    use alloy_primitives::{Address, U256};
 
-    use crate::common::{ CommonStrategyConfig, StrategyConfig, ONE_ETHER, PATH_FINDER_EXEX_ID };
+    use crate::common::{CommonStrategyConfig, ONE_ETHER, PATH_FINDER_EXEX_ID, StrategyConfig};
 
     use super::*;
 
@@ -103,12 +104,12 @@ mod tests {
             vault: "0x0000000000000000000000000000000000000000".to_string(),
             contract: "00".to_string(),
             max_liquidity: "1000".to_string(), // 1000 USDC
-            min_liquidity: "100".to_string(), // 100 USDC
-            max_profit: "100".to_string(), // 100 USDC
-            min_profit: "0.001".to_string(), // 0.001 USDC
+            min_liquidity: "100".to_string(),  // 100 USDC
+            max_profit: "100".to_string(),     // 100 USDC
+            min_profit: "0.001".to_string(),   // 0.001 USDC
             gas_config: GasConfig {
                 priority_fee: 1_000_000_000, // 1 Gwei
-                gas_limit: 1_000_000, // 1 million gas
+                gas_limit: 1_000_000,        // 1 million gas
             },
             path: PathBuf::from("path/to/data"),
         };

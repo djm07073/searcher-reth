@@ -1,12 +1,18 @@
-use std::{ collections::HashMap, sync::{ atomic::{ AtomicBool, Ordering }, Arc, RwLock } };
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
-use alloy_signer_local::{ coins_bip39::English, MnemonicBuilder };
-use eyre::{ Result };
-use serde::{ Deserialize, Serialize };
+use alloy_signer_local::{MnemonicBuilder, coins_bip39::English};
+use eyre::Result;
+use serde::{Deserialize, Serialize};
 
-use crate::{ common::{ CommonStrategyConfig, StrategyConfig }, types::Candidate };
+use crate::common::StrategyConfig;
 
 pub struct ConfigManager {
     config_path: String,
@@ -14,8 +20,6 @@ pub struct ConfigManager {
     config: RwLock<Config>,
     // flag to indicate if the configuration has changed
     config_changed: Arc<AtomicBool>,
-    // candidates loaded from the data file
-    candidates_map: HashMap<String, Vec<Candidate>>,
 }
 
 impl ConfigManager {
@@ -25,7 +29,6 @@ impl ConfigManager {
             config_path: path.to_string(),
             config: RwLock::new(toml::from_str(&content)?),
             config_changed: Arc::new(AtomicBool::new(false)),
-            candidates_map: HashMap::new(),
         })
     }
 
@@ -45,29 +48,10 @@ impl ConfigManager {
         self.config
             .read()
             .unwrap()
-            .strategies.get(exex_id)
+            .strategies
+            .get(exex_id)
             .cloned()
             .ok_or_else(|| eyre::eyre!("Strategy not found for exex_id: {}", exex_id))
-    }
-
-    pub fn get_or_load_candidates(
-        &mut self,
-        exex_id: &str,
-        chain_id: u64
-    ) -> eyre::Result<Vec<Candidate>> {
-        let config_has_changed = self.config_changed.load(Ordering::Relaxed);
-        let cached_candidates = self.candidates_map.get(exex_id);
-        let candidates = match cached_candidates {
-            Some(candidates) if !config_has_changed => { candidates.clone() }
-            _ => {
-                self.config_changed.store(false, Ordering::Relaxed);
-                let strategy = self.get_strategy(exex_id)?;
-                let new_candidates = strategy.load_candidates(chain_id)?;
-                self.candidates_map.insert(exex_id.to_string(), new_candidates.clone());
-                new_candidates
-            }
-        };
-        Ok(candidates)
     }
 }
 
@@ -92,8 +76,7 @@ impl TxRelayerConfig {
         let mut wallet = EthereumWallet::default();
         let mut addresses = Vec::new();
         for i in 0..self.signer_number {
-            let signer = MnemonicBuilder::<English>
-                ::default()
+            let signer = MnemonicBuilder::<English>::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;

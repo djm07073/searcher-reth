@@ -9130,6 +9130,7 @@ version = "0.0.0"
 dependencies = [
  "alloy-network",
  "alloy-primitives",
+ "alloy-serde",
  "alloy-signer-local",
  "eyre",
  "reth-revm",

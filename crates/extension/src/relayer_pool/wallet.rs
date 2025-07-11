@@ -1,4 +1,4 @@
-use std::sync::atomic::{ AtomicUsize, Ordering };
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
@@ -23,7 +23,7 @@ impl WalletPool {
     pub fn wallet(&self) -> &EthereumWallet {
         &self.wallet
     }
-    
+
     pub fn signers(&self) -> &[Address] {
         &self.signers
     }
