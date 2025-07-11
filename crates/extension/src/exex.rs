@@ -98,7 +98,7 @@ impl SearcherExEx {
                         event = "filter_candidates",
                         success = profitable_candidates.is_none(),
                         num_hash = ?num_hash,
-                        "No profitable candidates found"
+                        "Profitable candidates found"
                     );
                     if profitable_candidates.is_none() {
                         ctx.events.send(ExExEvent::FinishedHeight(num_hash))?;
