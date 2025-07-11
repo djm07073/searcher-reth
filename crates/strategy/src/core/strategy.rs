@@ -7,8 +7,11 @@ use eyre::Error;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
 use reth_revm::{
-    Context, MainBuilder, MainContext, SystemCallEvm,
-    context::result::{ExecResultAndState, ExecutionResult},
+    Context, ExecuteEvm, MainBuilder, MainContext,
+    context::{
+        TxEnv,
+        result::{ExecResultAndState, ExecutionResult},
+    },
     database::StateProviderDatabase,
     db::CacheDB,
     state::{AccountInfo, Bytecode, EvmState},
@@ -17,7 +20,7 @@ use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{common::StrategyConfig, gas::GasConfig, types::Candidate};
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
-
+pub const GAS_LIMIT: u64 = 1_000_000_000_000_000_000;
 pub type DirtyStates = HashMap<Address, HashSet<U256>>;
 
 pub trait Strategy {
@@ -60,7 +63,15 @@ pub trait Strategy {
                 let data = tx.input().clone();
                 let db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
                 let mut evm = Context::mainnet().with_db(db).build_mainnet();
-                let result = evm.transact_system_call_finalize(to, data).ok()?;
+                let tx_env = TxEnv::builder()
+                    .caller(Address::ZERO)
+                    .kind(alloy_primitives::TxKind::Call(to))
+                    .data(data)
+                    .value(U256::from(0))
+                    .gas_limit(GAS_LIMIT)
+                    .build()
+                    .unwrap();
+                let result = evm.transact(tx_env).ok()?;
                 let dirty_state: DirtyStates = result
                     .state
                     .iter()
@@ -133,7 +144,15 @@ pub trait Strategy {
         );
 
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
-        let result = evm.transact_system_call(STRATEGY_CONTRACT_ADDRESS, encoded.into())?;
+        let tx_env = TxEnv::builder()
+            .caller(Address::ZERO)
+            .kind(alloy_primitives::TxKind::Call(STRATEGY_CONTRACT_ADDRESS))
+            .data(encoded.into())
+            .value(U256::from(0))
+            .gas_limit(GAS_LIMIT)
+            .build()
+            .unwrap();
+        let result = evm.transact_one(tx_env)?;
         Ok(result)
     }
 
@@ -148,7 +167,15 @@ pub trait Strategy {
         let vault = self.get_vault();
         let db = CacheDB::new(StateProviderDatabase::new(provider));
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
-        let result = evm.transact_system_call_finalize(vault, encoded.into())?;
+        let tx_env = TxEnv::builder()
+            .caller(Address::ZERO)
+            .kind(alloy_primitives::TxKind::Call(vault))
+            .data(encoded.into())
+            .value(U256::from(0))
+            .gas_limit(GAS_LIMIT)
+            .build()
+            .unwrap();
+        let result = evm.transact(tx_env)?;
         Ok(result)
     }
 }
