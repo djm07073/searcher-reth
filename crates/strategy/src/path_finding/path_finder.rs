@@ -296,14 +296,15 @@ impl PathFinder {
     ) -> Option<U256>
         where DB: DBProvider + BlockHashReader + StateCommitmentProvider
     {
-        let encoded = (getProfitCall { amount, route }).abi_encode();
+        let profit_call = getProfitCall { amount, route };
+        let encoded = profit_call.abi_encode();
         let result = self.call_get_profit(latest_state_provider, encoded.clone());
         if result.is_err() {
             tracing::warn!(
                 target: "reth-exex",
                 event = "get_profit_call_failed",
                 error = ?result.err(),
-                encoded = hex::encode(encoded),
+                call = ?profit_call,
             );
             return None;
         }
@@ -316,7 +317,7 @@ impl PathFinder {
                     target: "reth-exex",
                     event = "get_profit_call_reverted",
                     output = ?output,
-                    encoded = hex::encode(encoded),
+                    call = ?profit_call,
                 );
                 None
             }
@@ -325,7 +326,7 @@ impl PathFinder {
                     target: "reth-exex",
                     event = "get_profit_call_failed",
                     error = ?reason,
-                    encoded = hex::encode(encoded),
+                    call = ?profit_call,
                 );
                 None
             }

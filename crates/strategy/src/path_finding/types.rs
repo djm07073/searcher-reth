@@ -12,9 +12,11 @@ sol! {
     }
 
     // Calculate the profit for a given route
+    #[derive(Debug)]
     function getProfit(uint256 amount, Hop[] memory route) view external returns (uint256 profit);
 
     // Execute a route and return the profit
+    #[derive(Debug)]
     function execute(
         uint256[] memory amounts,
         Hop[][] memory routes
