@@ -138,7 +138,7 @@ pub trait Strategy {
     {
         let contract = self.get_code();
         let mut db = CacheDB::new(StateProviderDatabase::new(provider));
-        tracing::debug!("Inserting strategy contract into the database: {:?}", contract.clone());
+        tracing::info!("Inserting strategy contract into the database: {:?}", contract.clone());
         db.insert_account_info(STRATEGY_CONTRACT_ADDRESS, AccountInfo {
             code_hash: contract.hash_slow(),
             code: Some(contract.clone()),
