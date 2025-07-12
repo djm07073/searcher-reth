@@ -361,12 +361,13 @@ impl PathFinder {
             }
         }
         let encoded = (getProfitCall { amount, route }).abi_encode();
-        let result = self.call_get_profit(latest_state_provider, encoded);
+        let result = self.call_get_profit(latest_state_provider, encoded.clone());
         if result.is_err() {
             tracing::warn!(
                 target: "reth-exex",
                 event = "get_profit_call_failed",
                 error = ?result.err(),
+                encoded = ?encoded,
             );
             return None;
         }
