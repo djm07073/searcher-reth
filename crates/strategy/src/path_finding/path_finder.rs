@@ -310,6 +310,12 @@ impl PathFinder {
         }
         match result.unwrap() {
             ExecutionResult::Success { output: Output::Call(value), .. } => {
+                tracing::info!(
+                    target: "reth-exex",
+                    event = "get_profit_call_success",
+                    call = ?profit_call,
+                    value = ?value,
+                );
                 Some(U256::abi_decode(&value).unwrap_or_default())
             }
             ExecutionResult::Revert { output, .. } => {
