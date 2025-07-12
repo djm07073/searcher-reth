@@ -172,17 +172,6 @@ impl Strategy for PathFinder {
                         "get optimal amount and profit from golden section search",
                     );
 
-                    // FIXME: (temp) Log profit information to a file
-                    let profit_info = serde_json::json!({
-                        "amount": amount.to_string(),
-                        "net_profit": net_profit.to_string(),
-                        "route": route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
-                    });
-                    if let std::result::Result::Ok(mut file) =
-                        OpenOptions::new().create(true).append(true).open("profits.json")
-                    {
-                        let _ = writeln!(file, "{}", profit_info);
-                    }
                     // 2-3. Filter out based on profit range
                     let route = if net_profit.ge(&max_profit) {
                         found_max_profit.store(true, Ordering::Relaxed);
@@ -201,6 +190,18 @@ impl Strategy for PathFinder {
                         );
                         return acc;
                     };
+
+                    // FIXME: (temp) Log profit information to a file
+                    let profit_info = serde_json::json!({
+                        "amount": amount.to_string(),
+                        "net_profit": net_profit.to_string(),
+                        "route": route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
+                    });
+                    if let std::result::Result::Ok(mut file) =
+                        OpenOptions::new().create(true).append(true).open("profits.json")
+                    {
+                        let _ = writeln!(file, "{}", profit_info);
+                    }
 
                     tracing::info!(
                         target: "path-finder",
