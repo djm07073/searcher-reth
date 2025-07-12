@@ -309,6 +309,7 @@ impl PathFinder {
             // validate the dex have code
             let mut db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
             let res = db.basic(route.first()?.dex);
+            tracing::info!("Address {:?}", route.first()?.dex);
             match res {
                 std::result::Result::Ok(Some(account)) => {
                     tracing::warn!(
