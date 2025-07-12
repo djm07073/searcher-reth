@@ -40,13 +40,16 @@ const INV_GOLDEN_RATIO_DEN: u128 = 1_000_000_000_000_000_000;
 pub struct PathFinder {
     config: StrategyConfig,
     candidates: Option<Vec<Candidate>>,
+    code: Bytecode,
 }
 
 impl Strategy for PathFinder {
     type Action = Hop;
 
     fn new(config: StrategyConfig) -> Self {
-        Self { config: config.clone(), candidates: None }
+        let code = config.get_contract();
+
+        Self { config: config.clone(), candidates: None, code }
     }
 
     fn gas_config(&self) -> GasConfig {
@@ -83,7 +86,7 @@ impl Strategy for PathFinder {
     }
 
     fn get_code(&self) -> Bytecode {
-        self.config.get_contract()
+        self.code.clone()
     }
 
     fn get_vault(&self) -> Address {

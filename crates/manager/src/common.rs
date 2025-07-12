@@ -1,5 +1,6 @@
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{Address, U256, hex};
 use reth_revm::state::Bytecode;
+use reth_tracing::tracing;
 use serde::{Deserialize, Serialize};
 
 use crate::{gas::GasConfig, strategy::path_finder::PathFinderConfig, types::Candidate};
@@ -54,7 +55,24 @@ impl CommonStrategyConfig for StrategyConfig {
     fn get_contract(&self) -> Bytecode {
         match self {
             StrategyConfig::PathFinder(config) => {
-                Bytecode::new_raw_checked(Bytes(config.contract.clone().into())).unwrap()
+                tracing::info!("Loading strategy contract for PathFinder: {:?}", config.contract);
+                let bytes = match hex::decode(config.contract.clone()) {
+                    Ok(vec) => alloy_primitives::Bytes::from(vec),
+                    Err(e) => {
+                        tracing::error!("Failed to decode contract hex: {}", e);
+                        return Bytecode::default();
+                    }
+                };
+                match Bytecode::new_raw_checked(bytes) {
+                    Ok(code) => {
+                        tracing::info!("Loaded strategy contract: {:?}", code);
+                        code
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to load strategy contract: {}", e);
+                        Bytecode::default() // Return an empty bytecode on error
+                    }
+                }
             } // TODO: Add other strategy configurations
         }
     }
