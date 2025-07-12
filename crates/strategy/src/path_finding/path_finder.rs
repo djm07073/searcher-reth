@@ -321,6 +321,7 @@ impl PathFinder {
                     target: "reth-exex",
                     event = "get_profit_call_reverted",
                     output = ?output,
+                    encoded = ?encoded,
                 );
                 None
             }
@@ -329,6 +330,7 @@ impl PathFinder {
                     target: "reth-exex",
                     event = "get_profit_call_failed",
                     error = ?reason,
+                    encoded = ?encoded,
                 );
                 None
             }
