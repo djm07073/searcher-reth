@@ -1,16 +1,17 @@
-use alloy_primitives::{ Address, U256, hex };
+use alloy_primitives::{Address, U256, hex};
 use reth_revm::state::Bytecode;
 use reth_tracing::tracing;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
-use crate::{ gas::GasConfig, strategy::path_finder::PathFinderConfig, types::Candidate };
+use crate::{gas::GasConfig, strategy::path_finder::PathFinderConfig, types::Candidate};
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum StrategyConfig {
-    #[serde(rename = "path-finder")] PathFinder(PathFinderConfig),
+    #[serde(rename = "path-finder")]
+    PathFinder(PathFinderConfig),
     // #[serde(rename = "liquidation")] Liquidation(LiquidationConfig),
     // #[serde(rename = "arbitrage")] Arbitrage(ArbitrageConfig),
 }
@@ -37,27 +38,25 @@ impl CommonStrategyConfig for StrategyConfig {
 
     fn get_liquidity_range(&self) -> (U256, U256) {
         match self {
-            StrategyConfig::PathFinder(config) =>
-                (
-                    U256::from(config.min_liquidity.parse::<u128>().unwrap() * ONE_ETHER),
-                    U256::from(config.max_liquidity.parse::<u128>().unwrap() * ONE_ETHER),
-                ),
+            StrategyConfig::PathFinder(config) => (
+                U256::from(config.min_liquidity.parse::<u128>().unwrap() * ONE_ETHER),
+                U256::from(config.max_liquidity.parse::<u128>().unwrap() * ONE_ETHER),
+            ),
         }
     }
 
     fn get_vault(&self) -> Address {
         match self {
-            StrategyConfig::PathFinder(config) =>
-                match config.vault.parse() {
-                    Ok(address) => {
-                        tracing::info!("Using vault address: {:?}", address);
-                        address
-                    }
-                    Err(_) => {
-                        tracing::warn!("Invalid vault address, using default ZERO address");
-                        Address::ZERO
-                    }
-                } // TODO: Add other strategy configurations
+            StrategyConfig::PathFinder(config) => match config.vault.parse() {
+                Ok(address) => {
+                    tracing::info!("Using vault address: {:?}", address);
+                    address
+                }
+                Err(_) => {
+                    tracing::warn!("Invalid vault address, using default ZERO address");
+                    Address::ZERO
+                }
+            }, // TODO: Add other strategy configurations
         }
     }
 

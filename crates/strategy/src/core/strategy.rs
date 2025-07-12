@@ -16,7 +16,6 @@ use reth_revm::{
     db::CacheDB,
     state::{AccountInfo, Bytecode, EvmState},
 };
-use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{common::StrategyConfig, gas::GasConfig, types::Candidate};
 
@@ -135,7 +134,6 @@ pub trait Strategy {
     {
         let contract = self.get_code();
         let mut db = CacheDB::new(StateProviderDatabase::new(provider));
-        tracing::info!("Inserting strategy contract into the database: {:?}", contract.clone());
         db.insert_account_info(
             STRATEGY_CONTRACT_ADDRESS,
             AccountInfo {
