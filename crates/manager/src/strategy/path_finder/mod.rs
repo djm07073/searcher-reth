@@ -48,10 +48,10 @@ impl PathFinderConfig {
             .get(&chain_id.to_string())
             .ok_or_else(|| eyre!("No routes found for chain_id: {}", chain_id))?;
 
-        self.build_all_paths(chain_routes)
+        self.build_cyclic_paths(chain_routes)
     }
 
-    fn build_all_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
+    fn build_cyclic_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
         let token_map: HashMap<&String, Vec<&RouteElement>> =
             chain_routes.elements.iter().fold(HashMap::new(), |mut acc, element| {
                 acc.entry(&element.src_token).or_default().push(element);
@@ -59,24 +59,35 @@ impl PathFinderConfig {
             });
 
         let mut candidates = Vec::new();
+        let parse_hex = |data: &str| -> eyre::Result<Vec<u8>> {
+            let hex_str = data.strip_prefix("0x").unwrap_or(data);
+            hex::decode(hex_str).map_err(|e| eyre!("Decode error: {}", e))
+        };
 
         for initial_token in &chain_routes.initial_tokens {
             if let Some(first_hops) = token_map.get(initial_token) {
                 for first_hop in first_hops {
-                    let parse_hex = |data: &str| -> eyre::Result<Vec<u8>> {
-                        let hex_str = data.strip_prefix("0x").unwrap_or(data);
-                        hex::decode(hex_str).map_err(|e| eyre!("Decode error: {}", e))
-                    };
-
                     let first_encoded = parse_hex(&first_hop.encoded_data)?;
-
-                    candidates.push(vec![first_encoded.clone()]);
 
                     if let Some(second_hops) = token_map.get(&first_hop.dst_token) {
                         for second_hop in second_hops {
-                            if second_hop.dst_token != *initial_token {
-                                let second_encoded = parse_hex(&second_hop.encoded_data)?;
-                                candidates.push(vec![first_encoded.clone(), second_encoded]);
+                            let second_encoded = parse_hex(&second_hop.encoded_data)?;
+
+                            if second_hop.dst_token == *initial_token {
+                                candidates.push(vec![first_encoded.clone(), second_encoded.clone()]);
+                            }
+
+                            if let Some(third_hops) = token_map.get(&second_hop.dst_token) {
+                                for third_hop in third_hops {
+                                    if third_hop.dst_token == *initial_token {
+                                        let third_encoded = parse_hex(&third_hop.encoded_data)?;
+                                        candidates.push(vec![
+                                            first_encoded.clone(),
+                                            second_encoded.clone(),
+                                            third_encoded,
+                                        ]);
+                                    }
+                                }
                             }
                         }
                     }
