@@ -1,14 +1,14 @@
 pub mod types;
 
-use std::{ collections::HashMap, fs::File, io::BufReader, path::PathBuf };
+use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
 
 use alloy_primitives::hex;
 use eyre::eyre;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     gas::GasConfig,
-    strategy::path_finder::types::{ Route, RouteElement, RoutesMap },
+    strategy::path_finder::types::{Route, RouteElement, RoutesMap},
     types::Candidate,
 };
 
@@ -41,8 +41,7 @@ impl PathFinderConfig {
         }
 
         let file = File::open(&self.path)?;
-        let routes_data: RoutesMap = serde_json
-            ::from_reader(BufReader::new(file))
+        let routes_data: RoutesMap = serde_json::from_reader(BufReader::new(file))
             .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
 
         let chain_routes = routes_data
@@ -51,20 +50,17 @@ impl PathFinderConfig {
 
         // Save the loaded chain_routes to a new JSON file for verification
         let output_path = format!("loaded_routes_{}.json", chain_id);
-        let output_file = File::create(&output_path).map_err(|e|
-            eyre!("Failed to create output file {}: {}", output_path, e)
-        )?;
-        serde_json
-            ::to_writer_pretty(output_file, chain_routes)
+        let output_file = File::create(&output_path)
+            .map_err(|e| eyre!("Failed to create output file {}: {}", output_path, e))?;
+        serde_json::to_writer_pretty(output_file, chain_routes)
             .map_err(|e| eyre!("Failed to write routes to {}: {}", output_path, e))?;
 
         self.build_cyclic_paths(chain_routes)
     }
 
     fn build_cyclic_paths(&self, chain_routes: &Route) -> eyre::Result<Vec<Candidate>> {
-        let token_map: HashMap<&String, Vec<&RouteElement>> = chain_routes.elements
-            .iter()
-            .fold(HashMap::new(), |mut acc, element| {
+        let token_map: HashMap<&String, Vec<&RouteElement>> =
+            chain_routes.elements.iter().fold(HashMap::new(), |mut acc, element| {
                 acc.entry(&element.src_token).or_default().push(element);
                 acc
             });
@@ -89,22 +85,19 @@ impl PathFinderConfig {
                             let second_encoded = parse_hex(&second_hop.encoded_data)?;
 
                             if second_hop.dst_token == *initial_token {
-                                candidates.push(
-                                    vec![first_encoded.clone(), second_encoded.clone()]
-                                );
+                                candidates
+                                    .push(vec![first_encoded.clone(), second_encoded.clone()]);
                             }
 
                             if let Some(third_hops) = token_map.get(&second_hop.dst_token) {
                                 for third_hop in third_hops {
                                     if third_hop.dst_token == *initial_token {
                                         let third_encoded = parse_hex(&third_hop.encoded_data)?;
-                                        candidates.push(
-                                            vec![
-                                                first_encoded.clone(),
-                                                second_encoded.clone(),
-                                                third_encoded
-                                            ]
-                                        );
+                                        candidates.push(vec![
+                                            first_encoded.clone(),
+                                            second_encoded.clone(),
+                                            third_encoded,
+                                        ]);
                                     }
                                 }
                             }
@@ -120,9 +113,9 @@ impl PathFinderConfig {
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::{ Address, U256 };
+    use alloy_primitives::{Address, U256};
 
-    use crate::common::{ CommonStrategyConfig, ONE_ETHER, PATH_FINDER_EXEX_ID, StrategyConfig };
+    use crate::common::{CommonStrategyConfig, ONE_ETHER, PATH_FINDER_EXEX_ID, StrategyConfig};
 
     use super::*;
 
@@ -132,12 +125,12 @@ mod tests {
             vault: "0x0000000000000000000000000000000000000000".to_string(),
             contract: "00".to_string(),
             max_liquidity: "1000".to_string(), // 1000 USDC
-            min_liquidity: "100".to_string(), // 100 USDC
-            max_profit: "100".to_string(), // 100 USDC
-            min_profit: "0.001".to_string(), // 0.001 USDC
+            min_liquidity: "100".to_string(),  // 100 USDC
+            max_profit: "100".to_string(),     // 100 USDC
+            min_profit: "0.001".to_string(),   // 0.001 USDC
             gas_config: GasConfig {
                 priority_fee: 1_000_000_000, // 1 Gwei
-                gas_limit: 1_000_000, // 1 million gas
+                gas_limit: 1_000_000,        // 1 million gas
             },
             path: PathBuf::from("path/to/data"),
         };
@@ -219,26 +212,22 @@ mod tests {
                     address: String::new(),
                     dex_type: 1,
                     metadata: String::new(),
-                }
+                },
             ],
         };
 
         let candidates = config.build_cyclic_paths(&chain_routes).unwrap();
         assert_eq!(candidates.len(), 3, "Should find two 2-hop and one 3-hop path");
 
-        let expected_2_hop_path_aba: Vec<Vec<u8>> = vec![
-            hex::decode("ab").unwrap(),
-            hex::decode("ba").unwrap()
-        ];
+        let expected_2_hop_path_aba: Vec<Vec<u8>> =
+            vec![hex::decode("ab").unwrap(), hex::decode("ba").unwrap()];
         let expected_3_hop_path_abca: Vec<Vec<u8>> = vec![
             hex::decode("ab").unwrap(),
             hex::decode("bc").unwrap(),
-            hex::decode("ca").unwrap()
+            hex::decode("ca").unwrap(),
         ];
-        let expected_2_hop_path_bab: Vec<Vec<u8>> = vec![
-            hex::decode("ba").unwrap(),
-            hex::decode("ab").unwrap()
-        ];
+        let expected_2_hop_path_bab: Vec<Vec<u8>> =
+            vec![hex::decode("ba").unwrap(), hex::decode("ab").unwrap()];
 
         assert!(
             candidates.contains(&expected_2_hop_path_aba),
