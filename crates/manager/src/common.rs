@@ -23,7 +23,7 @@ pub trait CommonStrategyConfig {
     fn get_contract(&self) -> Bytecode;
     fn get_profit_range(&self) -> (U256, U256);
     fn get_gas_config(&self) -> GasConfig;
-    fn load_candidates(&self, chain_id: u64) -> eyre::Result<Vec<Candidate>>;
+    fn load_candidates(&self, chain_id: u64) -> Vec<Candidate>;
 }
 
 pub const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -104,9 +104,24 @@ impl CommonStrategyConfig for StrategyConfig {
         }
     }
 
-    fn load_candidates(&self, chain_id: u64) -> eyre::Result<Vec<Candidate>> {
+    fn load_candidates(&self, chain_id: u64) -> Vec<Candidate> {
         match self {
-            StrategyConfig::PathFinder(config) => config.load_candidates(chain_id),
+            StrategyConfig::PathFinder(config) => {
+                match config.load_candidates(chain_id) {
+                    Ok(candidates) => {
+                        tracing::info!(
+                            "Loaded {} candidates for chain_id: {}",
+                            candidates.len(),
+                            chain_id
+                        );
+                        candidates
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to load candidates: {}", e);
+                        vec![] // Return an empty vector on error
+                    }
+                }
+            }
         }
     }
 }

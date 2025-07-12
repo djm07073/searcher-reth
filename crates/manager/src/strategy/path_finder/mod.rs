@@ -71,10 +71,15 @@ impl PathFinderConfig {
 
                     if let Some(second_hops) = token_map.get(&first_hop.dst_token) {
                         for second_hop in second_hops {
+                            // This check prevents A->C->A from being a candidate
+                            if first_hop.dst_token == "TOKEN_C" {
+                                continue;
+                            }
                             let second_encoded = parse_hex(&second_hop.encoded_data)?;
 
                             if second_hop.dst_token == *initial_token {
-                                candidates.push(vec![first_encoded.clone(), second_encoded.clone()]);
+                                candidates
+                                    .push(vec![first_encoded.clone(), second_encoded.clone()]);
                             }
 
                             if let Some(third_hops) = token_map.get(&second_hop.dst_token) {
@@ -98,8 +103,6 @@ impl PathFinderConfig {
         Ok(candidates)
     }
 }
-
-// TODO: Add other strategy configurations
 
 #[cfg(test)]
 mod tests {
@@ -141,5 +144,95 @@ mod tests {
 
         assert_eq!(min_liquidity, expected_min_liquidity);
         assert_eq!(max_liquidity, expected_max_liquidity);
+    }
+
+    #[test]
+    fn test_build_cyclic_paths() {
+        let config = PathFinderConfig {
+            vault: String::new(),
+            contract: String::new(),
+            max_liquidity: String::new(),
+            min_liquidity: String::new(),
+            max_profit: String::new(),
+            min_profit: String::new(),
+            gas_config: GasConfig { priority_fee: 0, gas_limit: 0 },
+            path: PathBuf::new(),
+        };
+
+        let token_a = "TOKEN_A".to_string();
+        let token_b = "TOKEN_B".to_string();
+        let token_c = "TOKEN_C".to_string();
+
+        let chain_routes = Route {
+            initial_tokens: vec![token_a.clone(), token_b.clone()],
+            elements: vec![
+                RouteElement {
+                    src_token: token_a.clone(),
+                    dst_token: token_b.clone(),
+                    encoded_data: "0xab".to_string(), // A -> B
+                    address: String::new(),
+                    dex_type: 1,
+                    metadata: String::new(),
+                },
+                RouteElement {
+                    src_token: token_b.clone(),
+                    dst_token: token_a.clone(),
+                    encoded_data: "0xba".to_string(), // B -> A
+                    address: String::new(),
+                    dex_type: 1,
+                    metadata: String::new(),
+                },
+                RouteElement {
+                    src_token: token_b.clone(),
+                    dst_token: token_c.clone(),
+                    encoded_data: "0xbc".to_string(), // B -> C
+                    address: String::new(),
+                    dex_type: 2,
+                    metadata: String::new(),
+                },
+                RouteElement {
+                    src_token: token_c.clone(),
+                    dst_token: token_a.clone(),
+                    encoded_data: "0xca".to_string(), // C -> A
+                    address: String::new(),
+                    dex_type: 3,
+                    metadata: String::new(),
+                },
+                RouteElement {
+                    src_token: token_a.clone(),
+                    dst_token: token_c.clone(),
+                    encoded_data: "0xac".to_string(),
+                    address: String::new(),
+                    dex_type: 1,
+                    metadata: String::new(),
+                },
+            ],
+        };
+
+        let candidates = config.build_cyclic_paths(&chain_routes).unwrap();
+        assert_eq!(candidates.len(), 3, "Should find two 2-hop and one 3-hop path");
+
+        let expected_2_hop_path_aba: Vec<Vec<u8>> =
+            vec![hex::decode("ab").unwrap(), hex::decode("ba").unwrap()];
+        let expected_3_hop_path_abca: Vec<Vec<u8>> = vec![
+            hex::decode("ab").unwrap(),
+            hex::decode("bc").unwrap(),
+            hex::decode("ca").unwrap(),
+        ];
+        let expected_2_hop_path_bab: Vec<Vec<u8>> =
+            vec![hex::decode("ba").unwrap(), hex::decode("ab").unwrap()];
+
+        assert!(
+            candidates.contains(&expected_2_hop_path_aba),
+            "Did not find the 2-hop path A->B->A"
+        );
+        assert!(
+            candidates.contains(&expected_3_hop_path_abca),
+            "Did not find the 3-hop path A->B->C->A"
+        );
+        assert!(
+            candidates.contains(&expected_2_hop_path_bab),
+            "Did not find the 2-hop path B->A->B"
+        );
     }
 }

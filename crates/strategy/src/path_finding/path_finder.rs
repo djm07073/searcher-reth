@@ -61,28 +61,9 @@ impl Strategy for PathFinder {
             return candidates.clone();
         }
 
-        match self.config.load_candidates(chain_id) {
-            std::result::Result::Ok(candidates) => {
-                tracing::info!(
-                    target: "path-finder",
-                    event = "candidates_loaded",
-                    count = candidates.len(),
-                    "Loaded {} candidates from configuration",
-                    candidates.len()
-                );
-                self.candidates = Some(candidates.clone());
-                candidates
-            }
-            Err(e) => {
-                tracing::error!(
-                    target: "path-finder",
-                    event = "candidates_load_failed",
-                    error = ?e,
-                    "Failed to load candidates from configuration"
-                );
-                Vec::new()
-            }
-        }
+        let candidates = self.config.load_candidates(chain_id);
+        self.candidates = Some(candidates.clone());
+        candidates
     }
 
     fn get_code(&self) -> Bytecode {

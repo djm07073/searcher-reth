@@ -25,9 +25,10 @@ pub struct ConfigManager {
 impl ConfigManager {
     pub fn from_file(path: &str) -> eyre::Result<Self> {
         let content = std::fs::read_to_string(path)?;
+        let config: Config = toml::from_str(&content)?;
         Ok(Self {
             config_path: path.to_string(),
-            config: RwLock::new(toml::from_str(&content)?),
+            config: RwLock::new(config),
             config_changed: Arc::new(AtomicBool::new(false)),
         })
     }
