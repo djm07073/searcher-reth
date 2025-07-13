@@ -11,7 +11,7 @@ use reth_revm::{ context::result::{ ExecutionResult, Output, ResultAndState }, s
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
-    common::{ CommonStrategyConfig, StrategyConfig },
+    common::{ CommonStrategyConfig, StrategyConfig, ONE_ETHER },
     gas::GasConfig,
     types::Candidate,
 };
@@ -164,7 +164,7 @@ impl Strategy for PathFinder {
                         event = "profit",
                         sub_event = "predicted",
                         amount = %amount,
-                        profit = %profit,
+                        profit = %profit.div_ceil(U256::from(ONE_ETHER)),
                         route = ?route,
                         "get optimal amount and profit from golden section search",
                     );
@@ -181,7 +181,7 @@ impl Strategy for PathFinder {
                             event = "profit",
                             sub_event = "filtered",
                             filter = "profit range",
-                            profit = %profit,
+                            profit = %profit.div_ceil(U256::from(ONE_ETHER)),
                             route = ?route.clone(),
                             "filter route profit below minimum threshold",
                         );
@@ -208,7 +208,7 @@ impl Strategy for PathFinder {
                         target: "path-finder",
                         event = "profit",
                         sub_event = "predicted",
-                        profit = %profit,
+                        profit =  %profit.div_ceil(U256::from(ONE_ETHER)),
                         min_profit = %min_profit,
                         route = ?route.clone(),
                         vault = no_vault,
