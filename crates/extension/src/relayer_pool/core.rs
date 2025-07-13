@@ -202,10 +202,10 @@ where
                                 if sig == &Profit::SIGNATURE_HASH {
                                     let parsed = Profit::decode_log(log)?;
                                     tracing::info!(
-                                        event = "profit_realized",
+                                        event = "profit",
                                         token = %parsed.token,
                                         profit = %parsed.profit,
-                                        "profit event received"
+                                        "profit realized"
                                     );
                                 }
                             }
