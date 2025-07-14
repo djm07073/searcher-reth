@@ -1,0 +1,80 @@
+use std::{fs::File, io::Write, sync::{Arc, Mutex}};
+
+use chrono::Utc;
+use reqwest::Client;
+use serde_json::Value;
+use tokio::{spawn, time::{interval, Duration}};
+
+#[derive(Clone)]
+pub struct ProfitReporter {
+    buffer: Arc<Mutex<Vec<Value>>>,
+    token: String,
+    chat_id: String,
+    interval_secs: u64,
+}
+
+impl ProfitReporter {
+    pub fn new(token: String, chat_id: String, interval_secs: u64) -> Self {
+        let reporter = Self {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+            token,
+            chat_id,
+            interval_secs,
+        };
+        reporter.spawn_task();
+        reporter
+    }
+
+    pub fn record(&self, info: Value) {
+        let mut buf = self.buffer.lock().unwrap();
+        buf.push(info);
+    }
+
+    fn spawn_task(&self) {
+        let buffer = self.buffer.clone();
+        let token = self.token.clone();
+        let chat_id = self.chat_id.clone();
+        let interval_secs = self.interval_secs;
+        spawn(async move {
+            let client = Client::new();
+            let mut timer = interval(Duration::from_secs(interval_secs));
+            loop {
+                timer.tick().await;
+                let mut data = buffer.lock().unwrap();
+                if data.is_empty() {
+                    continue;
+                }
+                let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+                let filename = format!("profits_{}.json", timestamp);
+                if let Ok(mut file) = File::create(&filename) {
+                    for entry in data.iter() {
+                        let _ = writeln!(file, "{}", entry);
+                    }
+                }
+                let text = data.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n");
+                let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
+                let _ = client
+                    .post(url)
+                    .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
+                    .send()
+                    .await;
+                data.clear();
+            }
+        });
+    }
+}
+
+use once_cell::sync::OnceLock;
+
+static REPORTER: OnceLock<ProfitReporter> = OnceLock::new();
+
+pub fn init_reporter(token: String, chat_id: String, interval: u64) {
+    REPORTER.get_or_init(|| ProfitReporter::new(token, chat_id, interval));
+}
+
+pub fn record_profit(info: Value) {
+    if let Some(r) = REPORTER.get() {
+        r.record(info);
+    }
+}
+

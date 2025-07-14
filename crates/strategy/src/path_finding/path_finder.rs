@@ -18,9 +18,9 @@ use searcher_reth_manager::{
 
 use crate::path_finding::types::executeCall;
 
-use super::types::{ Hop, getProfitCall };
+use super::types::{getProfitCall, Hop};
+use crate::profit_reporter::record_profit;
 use serde_json;
-use std::{ fs::OpenOptions, io::Write };
 
 const PROFITABLE_PATHS_LIMIT: usize = 10;
 const MAX_SEARCH_DEPTH: usize = 20;
@@ -188,21 +188,12 @@ impl Strategy for PathFinder {
                         return acc;
                     };
 
-                    // FIXME: (temp) Log profit information to a file
-                    let profit_info =
-                        serde_json::json!({
+                    let profit_info = serde_json::json!({
                         "amount": amount.to_string(),
                         "profit": profit.to_string(),
                         "route": route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
                     });
-                    if
-                        let std::result::Result::Ok(mut file) = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open("profits.json")
-                    {
-                        let _ = writeln!(file, "{}", profit_info);
-                    }
+                    record_profit(profit_info);
 
                     tracing::info!(
                         target: "path-finder",
