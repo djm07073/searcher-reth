@@ -24,6 +24,22 @@ impl ProfitReporter {
             chat_id,
             interval_secs,
         };
+        {
+            let client = Client::new();
+            let url = format!("https://api.telegram.org/bot{}/sendMessage", reporter.token);
+            let text = "Profit reporter has been created.";
+            let chat_id = reporter.chat_id.clone();
+            spawn(async move {
+                let res = client
+                    .post(url)
+                    .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
+                    .send()
+                    .await;
+                if let Err(e) = res {
+                    tracing::error!("Failed to send creation message to Telegram: {}", e);
+                }
+            });
+        }
         reporter.spawn_task();
         reporter
     }
