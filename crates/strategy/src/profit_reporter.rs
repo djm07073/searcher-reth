@@ -14,6 +14,7 @@ pub struct ProfitReporter {
     token: String,
     chat_id: String,
     interval_secs: u64,
+    client: Client,
 }
 
 impl ProfitReporter {
@@ -23,23 +24,14 @@ impl ProfitReporter {
             token,
             chat_id,
             interval_secs,
+            client: Client::new(),
         };
-        {
-            let client = Client::new();
-            let url = format!("https://api.telegram.org/bot{}/sendMessage", reporter.token);
-            let text = "Profit reporter has been created.";
-            let chat_id = reporter.chat_id.clone();
-            spawn(async move {
-                let res = client
-                    .post(url)
-                    .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
-                    .send()
-                    .await;
-                if let Err(e) = res {
-                    tracing::error!("Failed to send creation message to Telegram: {}", e);
-                }
-            });
-        }
+
+        let self_clone = reporter.clone();
+        spawn(async move {
+            self_clone.send_message("Profit reporter has been created.").await;
+        });
+
         reporter.spawn_task();
         reporter
     }
@@ -49,18 +41,25 @@ impl ProfitReporter {
         buf.push(info);
     }
 
+    async fn send_message(&self, text: &str) {
+        let url = format!("https://api.telegram.org/bot{}/sendMessage", self.token);
+        let res = self.client
+            .post(&url)
+            .json(&serde_json::json!({"chat_id": &self.chat_id, "text": text}))
+            .send().await;
+        if let Err(e) = res {
+            tracing::error!("Failed to send message to Telegram: {}", e);
+        }
+    }
+
     fn spawn_task(&self) {
-        let buffer = self.buffer.clone();
-        let token = self.token.clone();
-        let chat_id = self.chat_id.clone();
-        let interval_secs = self.interval_secs;
+        let self_clone = self.clone();
         spawn(async move {
-            let client = Client::new();
-            let mut timer = interval(Duration::from_secs(interval_secs));
+            let mut timer = interval(Duration::from_secs(self_clone.interval_secs));
             loop {
                 timer.tick().await;
                 let data_to_process: Vec<Value> = {
-                    let mut data = buffer.lock().unwrap();
+                    let mut data = self_clone.buffer.lock().unwrap();
                     if data.is_empty() {
                         continue;
                     }
@@ -75,18 +74,36 @@ impl ProfitReporter {
                         let _ = file.write_all(b"\n").await;
                     }
                 }
-                let text = data_to_process
+
+                const MAX_LEN: usize = 4096;
+                let mut messages_to_send = Vec::new();
+                let mut current_message = String::new();
+
+                let lines: Vec<String> = data_to_process
                     .iter()
                     .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-                let res = client
-                    .post(url)
-                    .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
-                    .send().await;
-                if let Err(e) = res {
-                    tracing::error!("Failed to send profit report to Telegram: {}", e);
+                    .collect();
+
+                for line in lines {
+                    if current_message.len() + line.len() + 1 > MAX_LEN {
+                        if !current_message.is_empty() {
+                            messages_to_send.push(current_message);
+                        }
+                        current_message = line;
+                    } else {
+                        if !current_message.is_empty() {
+                            current_message.push('\n');
+                        }
+                        current_message.push_str(&line);
+                    }
+                }
+
+                if !current_message.is_empty() {
+                    messages_to_send.push(current_message);
+                }
+
+                for msg in messages_to_send {
+                    self_clone.send_message(&msg).await;
                 }
             }
         });
