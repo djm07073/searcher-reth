@@ -198,7 +198,7 @@ impl Strategy for PathFinder {
 
                     let profit_info = serde_json::json!({
                         "token": route[0].srcToken.to_string(),
-                        "amount": amount.to_string(),
+                        "amount": amount.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "profit": profit.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "route": route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
                     });

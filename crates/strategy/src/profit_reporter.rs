@@ -1,14 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{ Arc, Mutex };
 
-use tokio::{fs::File, io::AsyncWriteExt};
+use reth_tracing::tracing;
+use tokio::{ fs::File, io::AsyncWriteExt };
 
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
-use tokio::{
-    spawn,
-    time::{Duration, interval},
-};
+use tokio::{ spawn, time::{ Duration, interval } };
 
 #[derive(Clone)]
 pub struct ProfitReporter {
@@ -20,8 +18,12 @@ pub struct ProfitReporter {
 
 impl ProfitReporter {
     pub fn new(token: String, chat_id: String, interval_secs: u64) -> Self {
-        let reporter =
-            Self { buffer: Arc::new(Mutex::new(Vec::new())), token, chat_id, interval_secs };
+        let reporter = Self {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+            token,
+            chat_id,
+            interval_secs,
+        };
         reporter.spawn_task();
         reporter
     }
@@ -57,14 +59,19 @@ impl ProfitReporter {
                         let _ = file.write_all(b"\n").await;
                     }
                 }
-                let text =
-                    data_to_process.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n");
+                let text = data_to_process
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-                let _ = client
+                let res = client
                     .post(url)
                     .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
-                    .send()
-                    .await;
+                    .send().await;
+                if let Err(e) = res {
+                    tracing::error!("Failed to send profit report to Telegram: {}", e);
+                }
             }
         });
     }
