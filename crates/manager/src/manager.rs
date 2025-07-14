@@ -1,16 +1,11 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc, RwLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{ collections::HashMap, sync::{ Arc, RwLock, atomic::{ AtomicBool, Ordering } } };
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
-use alloy_signer_local::{MnemonicBuilder, coins_bip39::English};
+use alloy_signer_local::{ MnemonicBuilder, coins_bip39::English };
 use eyre::Result;
-use serde::{Deserialize, Serialize};
+use reth_tracing::tracing;
+use serde::{ Deserialize, Serialize };
 
 use crate::common::StrategyConfig;
 
@@ -49,8 +44,7 @@ impl ConfigManager {
         self.config
             .read()
             .unwrap()
-            .strategies
-            .get(exex_id)
+            .strategies.get(exex_id)
             .cloned()
             .ok_or_else(|| eyre::eyre!("Strategy not found for exex_id: {}", exex_id))
     }
@@ -79,13 +73,15 @@ impl TxRelayerConfig {
         let mut wallet = EthereumWallet::default();
         let mut addresses = Vec::new();
         for i in 0..self.signer_number {
-            let signer = MnemonicBuilder::<English>::default()
+            let signer = MnemonicBuilder::<English>
+                ::default()
                 .phrase(self.mnemonic.clone())
                 .index(i)?
                 .build()?;
             wallet.register_signer(signer.clone());
             addresses.push(signer.address());
         }
+        tracing::info!("Wallet created with {} signers: {:?}", self.signer_number, addresses);
         Ok((wallet, addresses))
     }
 }
