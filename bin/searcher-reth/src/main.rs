@@ -8,9 +8,7 @@ use searcher_reth_extension::{
     exex::SearcherExEx,
     relayer_pool::WalletPool,
     strategy::{
-        core::strategy::Strategy,
-        path_finding::PathFinder,
-        profit_reporter::init_reporter,
+        core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter,
     },
     util::signal_manager::SignalManager,
 };
