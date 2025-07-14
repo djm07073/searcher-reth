@@ -1,8 +1,7 @@
-use std::{
-    fs::File,
-    io::Write,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
+
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 use chrono::Utc;
 use reqwest::Client;
@@ -53,9 +52,12 @@ impl ProfitReporter {
 
                 let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
                 let filename = format!("profits_{}.json", timestamp);
-                if let Ok(mut file) = File::create(&filename) {
+                if let Ok(mut file) = tokio::fs::File::create(&filename).await {
                     for entry in data_to_process.iter() {
-                        let _ = writeln!(file, "{}", entry);
+                        let _ = file
+                            .write_all(entry.to_string().as_bytes())
+                            .await;
+                        let _ = file.write_all(b"\n").await;
                     }
                 }
                 let text =
