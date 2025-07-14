@@ -63,6 +63,8 @@ pub struct Config {
     pub relayer: TxRelayerConfig,
     #[serde(default, rename = "strategy")]
     pub strategies: HashMap<ExExId, StrategyConfig>,
+    #[serde(default)]
+    pub telegram: Option<TelegramConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,5 +87,24 @@ impl TxRelayerConfig {
             addresses.push(signer.address());
         }
         Ok((wallet, addresses))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct TelegramConfig {
+    pub bot_token: String,
+    pub chat_id: String,
+    #[serde(default = "default_report_interval_secs")]
+    pub report_interval_secs: u64,
+}
+
+fn default_report_interval_secs() -> u64 {
+    600
+}
+
+impl ConfigManager {
+    pub fn get_telegram(&self) -> Option<TelegramConfig> {
+        self.config.read().unwrap().telegram.clone()
     }
 }

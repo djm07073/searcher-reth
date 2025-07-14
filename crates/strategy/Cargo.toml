@@ -45,3 +45,6 @@ reth-transaction-pool.workspace = true
 searcher-reth-manager.workspace = true
 
 serde_json.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+once_cell.workspace = true

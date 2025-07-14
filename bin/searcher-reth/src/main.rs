@@ -7,13 +7,18 @@ use reth_tracing::tracing::{self, error};
 use searcher_reth_extension::{
     exex::SearcherExEx,
     relayer_pool::WalletPool,
-    strategy::{core::strategy::Strategy, path_finding::PathFinder},
+    strategy::{
+        core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter,
+    },
     util::signal_manager::SignalManager,
 };
 use searcher_reth_manager::{SignalType, common::PATH_FINDER_EXEX_ID, manager::ConfigManager};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
+    if let Some(tg) = config.read().unwrap().get_telegram() {
+        init_reporter(tg.bot_token, tg.chat_id, tg.report_interval_secs);
+    }
     let wallet = config.read().unwrap().get_wallet().unwrap();
     let wallet = Arc::new(WalletPool::new(wallet));
     tracing::info!("Starting searcher-reth with wallet: {:?}", wallet.signers());
