@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use reth_tracing::tracing;
 use tokio::{fs::File, io::AsyncWriteExt};
@@ -17,7 +17,6 @@ pub struct ProfitReporter {
     token: String,
     chat_id: String,
     interval_secs: u64,
-    client: Client,
 }
 
 impl ProfitReporter {
@@ -27,12 +26,12 @@ impl ProfitReporter {
             token,
             chat_id,
             interval_secs,
-            client: Client::new(),
         };
 
         let self_clone = reporter.clone();
         spawn(async move {
-            self_clone.send_message("Profit reporter has been created.").await;
+            let client = Client::new();
+            self_clone.send_message(&client, "Profit reporter has been created.").await;
         });
 
         reporter.spawn_task();
@@ -44,10 +43,9 @@ impl ProfitReporter {
         buf.push(info);
     }
 
-    async fn send_message(&self, text: &str) {
+    async fn send_message(&self, client: &Client, text: &str) {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.token);
-        let res = self
-            .client
+        let res = client
             .post(&url)
             .json(&serde_json::json!({"chat_id": &self.chat_id, "text": text}))
             .send()
@@ -71,6 +69,34 @@ impl ProfitReporter {
                     }
                     data.drain(..).collect()
                 };
+
+                let mut best_profits: HashMap<Value, Value> = HashMap::new();
+                for report in data_to_process {
+                    if let Some(route_val) = report.get("route").cloned() {
+                        let current_profit = report
+                            .get("profit")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<u128>().ok())
+                            .unwrap_or(0);
+
+                        let entry = best_profits.entry(route_val).or_insert_with(|| report.clone());
+
+                        let existing_profit = entry
+                            .get("profit")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<u128>().ok())
+                            .unwrap_or(0);
+
+                        if current_profit > existing_profit {
+                            *entry = report;
+                        }
+                    }
+                }
+                let data_to_process = best_profits.into_values().collect::<Vec<Value>>();
+
+                if data_to_process.is_empty() {
+                    continue;
+                }
 
                 let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
                 let filename = format!("profits_{}.json", timestamp);
