@@ -1,12 +1,15 @@
-use std::sync::{ Arc, Mutex };
+use std::sync::{Arc, Mutex};
 
 use reth_tracing::tracing;
-use tokio::{ fs::File, io::AsyncWriteExt };
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
-use tokio::{ spawn, time::{ Duration, interval } };
+use tokio::{
+    spawn,
+    time::{Duration, interval},
+};
 
 #[derive(Clone)]
 pub struct ProfitReporter {
@@ -43,10 +46,12 @@ impl ProfitReporter {
 
     async fn send_message(&self, text: &str) {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.token);
-        let res = self.client
+        let res = self
+            .client
             .post(&url)
             .json(&serde_json::json!({"chat_id": &self.chat_id, "text": text}))
-            .send().await;
+            .send()
+            .await;
         if let Err(e) = res {
             tracing::error!("Failed to send message to Telegram: {}", e);
         }
@@ -55,6 +60,7 @@ impl ProfitReporter {
     fn spawn_task(&self) {
         let self_clone = self.clone();
         spawn(async move {
+            let client = Client::new();
             let mut timer = interval(Duration::from_secs(self_clone.interval_secs));
             loop {
                 timer.tick().await;
@@ -76,34 +82,48 @@ impl ProfitReporter {
                 }
 
                 const MAX_LEN: usize = 4096;
-                let mut messages_to_send = Vec::new();
                 let mut current_message = String::new();
+                let url = format!("https://api.telegram.org/bot{}/sendMessage", self_clone.token);
 
-                let lines: Vec<String> = data_to_process
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect();
+                for value in data_to_process.iter() {
+                    let pretty_entry =
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
+                    let formatted_entry = format!("```json\n{}\n```\n\n", pretty_entry);
 
-                for line in lines {
-                    if current_message.len() + line.len() + 1 > MAX_LEN {
+                    if current_message.len() + formatted_entry.len() > MAX_LEN {
                         if !current_message.is_empty() {
-                            messages_to_send.push(current_message);
+                            let res = client
+                                .post(&url)
+                                .json(
+                                    &serde_json::json!({ "chat_id": &self_clone.chat_id, "text": &current_message, "parse_mode": "Markdown" })
+                                )
+                                .send().await;
+                            if let Err(e) = res {
+                                tracing::error!(
+                                    "Failed to send profit report chunk to Telegram: {}",
+                                    e
+                                );
+                            }
                         }
-                        current_message = line;
+                        current_message = formatted_entry;
                     } else {
-                        if !current_message.is_empty() {
-                            current_message.push('\n');
-                        }
-                        current_message.push_str(&line);
+                        current_message.push_str(&formatted_entry);
                     }
                 }
 
                 if !current_message.is_empty() {
-                    messages_to_send.push(current_message);
-                }
-
-                for msg in messages_to_send {
-                    self_clone.send_message(&msg).await;
+                    let res = client
+                        .post(&url)
+                        .json(
+                            &serde_json::json!({ "chat_id": &self_clone.chat_id, "text": &current_message, "parse_mode": "Markdown" })
+                        )
+                        .send().await;
+                    if let Err(e) = res {
+                        tracing::error!(
+                            "Failed to send final profit report chunk to Telegram: {}",
+                            e
+                        );
+                    }
                 }
             }
         });

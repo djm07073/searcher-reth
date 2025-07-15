@@ -16,12 +16,10 @@ use searcher_reth_manager::{SignalType, common::PATH_FINDER_EXEX_ID, manager::Co
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
-    let telegram_cfg = config.read().unwrap().get_telegram();
-    let wallet = config.read().unwrap().get_wallet().unwrap();
-    let wallet = Arc::new(WalletPool::new(wallet));
-    tracing::info!("Starting searcher-reth with wallet: {:?}", wallet.signers());
-
     reth::cli::Cli::<EthereumChainSpecParser>::parse().run(|builder, _| async move {
+        let telegram_cfg = config.read().unwrap().get_telegram();
+        let wallet = config.read().unwrap().get_wallet().unwrap();
+        let wallet = Arc::new(WalletPool::new(wallet));
         if let Some(tg) = telegram_cfg {
             init_reporter(tg.bot_token, tg.chat_id, tg.report_interval_secs);
         }

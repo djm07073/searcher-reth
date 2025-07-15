@@ -130,6 +130,7 @@ impl Strategy for PathFinder {
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
+                    // TODO: decode only once in create path finder
                     // 2-1. Decode hops
                     let mut route = Vec::new();
                     for hop in candidate.iter() {
@@ -195,7 +196,6 @@ impl Strategy for PathFinder {
                         );
                         return acc;
                     };
-
                     let profit_info = serde_json::json!({
                         "token": route[0].srcToken.to_string(),
                         "amount": amount.div_ceil(U256::from(ONE_ETHER)).to_string(),
