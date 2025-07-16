@@ -50,7 +50,6 @@ impl SignalManager {
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
         let mut sigusr1 = signal(SignalKind::user_defined1())?;
-        let mut sigusr2 = signal(SignalKind::user_defined2())?;
 
         tracing::info!(
             event = "signal_handler_start",
@@ -63,13 +62,6 @@ impl SignalManager {
             tokio::select! {
                 _ = sigusr1.recv() => {
                     self.toggle_pause(&mut is_paused);
-                }
-                _ = sigusr2.recv() => {
-                    self.send_signal(SignalType::Reload);
-                    tracing::info!(
-                        event = "reload",
-                        status = "reloaded",
-                    );
                 }
                 _ = sigterm.recv() => {
                     self.handle_shutdown_signal("SIGTERM").await;

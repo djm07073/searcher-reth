@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc, RwLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{collections::HashMap, sync::RwLock};
 
 use alloy_network::EthereumWallet;
 use alloy_primitives::Address;
@@ -16,30 +10,14 @@ use serde::{Deserialize, Serialize};
 use crate::common::StrategyConfig;
 
 pub struct ConfigManager {
-    config_path: String,
-    // configuration from the file
     config: RwLock<Config>,
-    // flag to indicate if the configuration has changed
-    config_changed: Arc<AtomicBool>,
 }
 
 impl ConfigManager {
     pub fn from_file(path: &str) -> eyre::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
-        Ok(Self {
-            config_path: path.to_string(),
-            config: RwLock::new(config),
-            config_changed: Arc::new(AtomicBool::new(false)),
-        })
-    }
-
-    pub fn reload(&mut self) -> eyre::Result<()> {
-        let content = std::fs::read_to_string(&self.config_path)?;
-        let new_config: Config = toml::from_str(&content)?;
-        *self.config.write().unwrap() = new_config;
-        self.config_changed.store(true, Ordering::Relaxed);
-        Ok(())
+        Ok(Self { config: RwLock::new(config) })
     }
 
     pub fn get_wallet(&self) -> Result<(EthereumWallet, Vec<Address>)> {

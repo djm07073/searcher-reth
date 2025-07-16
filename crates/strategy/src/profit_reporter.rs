@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use reth_tracing::tracing;
 use tokio::{fs::File, io::AsyncWriteExt};
@@ -21,12 +24,8 @@ pub struct ProfitReporter {
 
 impl ProfitReporter {
     pub fn new(token: String, chat_id: String, interval_secs: u64) -> Self {
-        let reporter = Self {
-            buffer: Arc::new(Mutex::new(Vec::new())),
-            token,
-            chat_id,
-            interval_secs,
-        };
+        let reporter =
+            Self { buffer: Arc::new(Mutex::new(Vec::new())), token, chat_id, interval_secs };
 
         let self_clone = reporter.clone();
         spawn(async move {

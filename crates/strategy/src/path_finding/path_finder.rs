@@ -1,25 +1,39 @@
-use std::{ collections::HashMap, sync::{ Arc, atomic::{ AtomicBool, Ordering } } };
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use crate::core::strategy::Strategy;
+use crate::{
+    core::strategy::Strategy,
+    path_finding::{Hop, RouterHop},
+};
 use alloy_eips::NumHash;
-use alloy_primitives::{ Address, B256, U256 };
-use alloy_rpc_types::{ AccessList, AccessListItem };
-use alloy_sol_types::{ SolCall, SolValue };
-use eyre::{ Error, Ok, Result };
-use rayon::{ iter::{ IntoParallelRefIterator, ParallelIterator }, join };
-use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
-use reth_revm::{ context::result::{ ExecutionResult, Output, ResultAndState }, state::Bytecode };
+use alloy_primitives::{Address, B256, U256};
+use alloy_rpc_types::{AccessList, AccessListItem};
+use alloy_sol_types::{SolCall, SolValue};
+use eyre::{Error, Ok, Result};
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    join,
+};
+use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use reth_revm::{
+    context::result::{ExecutionResult, Output, ResultAndState},
+    state::Bytecode,
+};
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
-    common::{ CommonStrategyConfig, ONE_ETHER, StrategyConfig },
+    common::{CommonStrategyConfig, ONE_ETHER, StrategyConfig},
     gas::GasConfig,
-    types::Candidate,
 };
 
 use crate::path_finding::types::executeCall;
 
-use super::types::{ Hop, getProfitCall };
+use super::types::{QuoterHop, getProfitCall};
 use crate::profit_reporter::record_profit;
 use serde_json;
 
@@ -30,31 +44,22 @@ const INV_GOLDEN_RATIO_DEN: u128 = 1_000_000_000_000_000_000;
 
 pub struct PathFinder {
     config: StrategyConfig,
-    candidates: Option<Vec<Candidate>>,
     code: Bytecode,
+
+    // decoded routes
+    routes: Vec<(Vec<QuoterHop>, Vec<RouterHop>)>,
 }
 
 impl Strategy for PathFinder {
-    type Action = Hop;
+    type Action = QuoterHop;
 
     fn new(config: StrategyConfig) -> Self {
         let code = config.get_contract();
-
-        Self { config: config.clone(), candidates: None, code }
+        Self { config: config.clone(), code, routes: Vec::new() }
     }
 
     fn gas_config(&self) -> GasConfig {
         self.config.get_gas_config()
-    }
-
-    fn get_or_load_candidates(&mut self, chain_id: u64) -> Vec<Candidate> {
-        if let Some(candidates) = &self.candidates {
-            return candidates.clone();
-        }
-
-        let candidates = self.config.load_candidates(chain_id);
-        self.candidates = Some(candidates.clone());
-        candidates
     }
 
     fn get_code(&self) -> Bytecode {
@@ -65,15 +70,43 @@ impl Strategy for PathFinder {
         self.config.get_vault()
     }
 
+    /// Load candidates and prepare routes
+    fn prepare(&mut self, chain_id: u64) {
+        let candidates = self.config.load_candidates(chain_id);
+        let mut routes = Vec::new();
+        for candidate in candidates.iter() {
+            for hop in candidate.iter() {
+                let mut quoter_route = Vec::new();
+                let mut router_route = Vec::new();
+                match Hop::abi_decode(hop) {
+                    std::result::Result::Ok(decoded_hop) => {
+                        quoter_route.push(decoded_hop.clone().into());
+                        router_route.push(decoded_hop.into());
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            target: "reth-exex",
+                            event = "hop_decode_failed",
+                            data = ?hop,
+                            "Failed to decode hop in candidate, skipping entire candidate"
+                        );
+                    }
+                }
+                routes.push((quoter_route, router_route));
+            }
+        }
+        self.routes = routes;
+    }
+
+    /// Finds profitable candidates from the pending transactions and candidates.
     fn find_profitable_candidates<
         T: PoolTransaction,
-        DB: DBProvider + BlockHashReader + StateCommitmentProvider
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     >(
         &mut self,
         block: NumHash,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
-        candidates: Vec<Candidate>
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
         // 0. Check if the vault address is zero, if so, skip to make calldata
         let no_vault = self.get_vault() == Address::ZERO;
@@ -86,10 +119,8 @@ impl Strategy for PathFinder {
         }
 
         // 1. Get dirty states from pending transactions
-        let dirty_states = Self::collect_dirty_states_from_pending_txs(
-            pending_txs,
-            &latest_state_provider
-        );
+        let dirty_states =
+            Self::collect_dirty_states_from_pending_txs(pending_txs, &latest_state_provider);
 
         // 2. Filter candidates based on liquidity and profit ranges
         let (max_profit, min_profit) = self.config.get_profit_range();
@@ -105,8 +136,9 @@ impl Strategy for PathFinder {
             "starting search with configured ranges",
         );
 
+        let routes = self.routes.clone();
         let found_max_profit = Arc::new(AtomicBool::new(false));
-        let result = candidates
+        let result = routes
             .par_iter()
             .take_any_while(|_| !found_max_profit.load(Ordering::Relaxed))
             .take_any(PROFITABLE_PATHS_LIMIT)
@@ -114,41 +146,21 @@ impl Strategy for PathFinder {
                 || {
                     (
                         Vec::<U256>::new(), // amounts
-                        Vec::<Vec<Hop>>::new(), // routes
+                        Vec::<Vec<RouterHop>>::new(), // routes
                         HashMap::<Address, Vec<B256>>::new(), // access lists
                     )
                 },
-                |mut acc, candidate: &Candidate| {
+                |mut acc, (quoter_route, router_route)| {
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
-                    // TODO: decode only once in create path finder
-                    // 2-1. Decode hops
-                    let mut route = Vec::new();
-                    for hop in candidate.iter() {
-                        match Hop::abi_decode(hop) {
-                            std::result::Result::Ok(decoded_hop) => {
-                                route.push(decoded_hop);
-                            }
-                            Err(_) => {
-                                tracing::warn!(
-                                    target: "reth-exex",
-                                    event = "hop_decode_failed",
-                                    data = ?hop,
-                                    "Failed to decode hop in candidate, skipping entire candidate"
-                                );
-                                return acc;
-                            }
-                        }
-                    }
-
-                    // 2-2. Search optimal amount in liqudity range to get maximum profit
+                    // 2-1. Search optimal amount in liqudity range to get maximum profit
                     let (amount, optimal_output) = match
                         self.golden_section_search(
                             &latest_state_provider,
                             min_liquidity,
                             max_liquidity,
-                            &route
+                            quoter_route
                         )
                     {
                         Some(res) if !found_max_profit.load(Ordering::Relaxed) => res,
@@ -168,16 +180,16 @@ impl Strategy for PathFinder {
                         sub_event = "predicted",
                         amount = %amount,
                         profit = %profit.div_ceil(U256::from(ONE_ETHER)),
-                        route = ?route,
+                        route = ?quoter_route,
                         "get optimal amount and profit from golden section search",
                     );
 
-                    // 2-3. Filter out based on profit range
-                    let route = if profit.ge(&max_profit) {
+                    // 2-2. Filter out based on profit range
+                    let quoter_route = if profit.ge(&max_profit) {
                         found_max_profit.store(true, Ordering::Relaxed);
-                        route.clone()
+                        quoter_route.clone()
                     } else if profit.ge(&min_profit) {
-                        route.clone()
+                        quoter_route.clone()
                     } else {
                         tracing::info!(
                             target: "path-finder",
@@ -185,7 +197,7 @@ impl Strategy for PathFinder {
                             sub_event = "filtered",
                             filter = "profit range",
                             profit = %profit.div_ceil(U256::from(ONE_ETHER)),
-                            route = ?route.clone(),
+                            route = ?quoter_route.clone(),
                             "filter route profit below minimum threshold",
                         );
                         return acc;
@@ -193,10 +205,10 @@ impl Strategy for PathFinder {
                     let profit_info =
                         serde_json::json!({
                         "block": block.number,
-                        "token": route[0].srcToken.to_string(),
+                        "token": quoter_route[0].srcToken.to_string(),
                         "amount": amount.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "profit": profit.div_ceil(U256::from(ONE_ETHER)).to_string(),
-                        "route": route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
+                        "route": quoter_route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
                     });
                     record_profit(profit_info);
 
@@ -206,7 +218,7 @@ impl Strategy for PathFinder {
                         sub_event = "predicted",
                         profit =  %profit.div_ceil(U256::from(ONE_ETHER)),
                         min_profit = %min_profit,
-                        route = ?route.clone(),
+                        route = ?quoter_route.clone(),
                         vault = no_vault,
                         "filtered by profit",
                     );
@@ -221,7 +233,7 @@ impl Strategy for PathFinder {
                             &latest_state_provider,
                             (executeCall {
                                 amounts: vec![amount],
-                                routes: vec![route.clone()],
+                                routes: vec![router_route.clone()],
                             }).abi_encode()
                         )
                     {
@@ -248,13 +260,13 @@ impl Strategy for PathFinder {
                         sub_event = "predicted",
                         filter = "dirty states",
                         profit = %optimal_output,
-                        route = ?route.clone(),
+                        route = ?router_route.clone(),
                         "filtered by dirty states",
                     );
 
                     // 2-5. accumulate result
                     acc.0.push(amount);
-                    acc.1.push(route);
+                    acc.1.push(router_route.clone());
                     for item in clean_states {
                         if let Some(storage_keys) = acc.2.get_mut(&item.address) {
                             storage_keys.extend(item.storage_keys);
@@ -311,9 +323,10 @@ impl PathFinder {
         &self,
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         amount: U256,
-        route: Vec<Hop>
+        route: Vec<QuoterHop>,
     ) -> Option<U256>
-        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
+    where
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
     {
         let profit_call = getProfitCall { amount, route };
         let encoded = profit_call.abi_encode();
@@ -364,7 +377,7 @@ impl PathFinder {
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         min_liquidity: U256,
         max_liquidity: U256,
-        hops: &[Hop]
+        hops: &[QuoterHop],
     ) -> Option<(U256, U256)> {
         let mut left = min_liquidity;
         let mut right = max_liquidity;
@@ -377,7 +390,7 @@ impl PathFinder {
 
         let (mut profit1, mut profit2) = join(
             || self.get_profit(latest_state_provider, mid1, hops.to_owned()),
-            || self.get_profit(latest_state_provider, mid2, hops.to_owned())
+            || self.get_profit(latest_state_provider, mid2, hops.to_owned()),
         );
 
         if profit1.is_none() || profit2.is_none() {
@@ -394,9 +407,8 @@ impl PathFinder {
                 profit1 = profit2;
 
                 let diff = right - left;
-                mid2 =
-                    left +
-                    (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
+                mid2 = left
+                    + (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
                 profit2 = self.get_profit(latest_state_provider, mid2, hops.to_owned());
                 profit2?;
             } else {
@@ -405,9 +417,8 @@ impl PathFinder {
                 profit2 = profit1;
 
                 let diff = right - left;
-                mid1 =
-                    right -
-                    (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
+                mid1 = right
+                    - (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
                 profit1 = self.get_profit(latest_state_provider, mid1, hops.to_owned());
                 profit1?;
             }

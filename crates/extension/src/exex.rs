@@ -44,6 +44,7 @@ impl SearcherExEx {
         let wallet = self.wallet.clone();
         let signal_rx = self.signal_rx.resubscribe();
         let vault = strategy.get_vault();
+        strategy.prepare(ctx.components.network().chain_id());
         Ok(async move {
             let relayer_pool = Arc::new(
                 RelayerPool::new(ctx.components.clone(), wallet, signal_rx, strategy.gas_config())
@@ -56,7 +57,6 @@ impl SearcherExEx {
                 "Starting Relayer Pool"
             );
 
-            let chain_id: u64 = ctx.components.network().chain_id();
             while let Some(notification) = ctx.notifications.next().await {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
@@ -86,12 +86,10 @@ impl SearcherExEx {
 
                     // 3. Filter candidates by path finder based on the latest state and pending
                     // transactions
-                    let candidates = strategy.get_or_load_candidates(chain_id);
                     let profitable_candidates = strategy.find_profitable_candidates(
                         num_hash,
                         latest_state_provider,
                         pending_txs,
-                        candidates.clone(),
                     )?;
 
                     tracing::info!(

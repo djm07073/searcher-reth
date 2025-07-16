@@ -18,7 +18,7 @@ use reth_revm::{
     state::{AccountInfo, Bytecode, EvmState},
 };
 use reth_transaction_pool::PoolTransaction;
-use searcher_reth_manager::{common::StrategyConfig, gas::GasConfig, types::Candidate};
+use searcher_reth_manager::{common::StrategyConfig, gas::GasConfig};
 
 pub const STRATEGY_CONTRACT_ADDRESS: Address = address!("0000000000000000000000000000000000012345");
 pub const GAS_LIMIT: u64 = 1_000_000_000_000_000_000;
@@ -30,9 +30,9 @@ pub trait Strategy {
     /// Creates Strategy of PathFinder with the given provider and contract bytecode.
     fn new(config: StrategyConfig) -> Self;
 
-    fn gas_config(&self) -> GasConfig;
+    fn prepare(&mut self, chain_id: u64);
 
-    fn get_or_load_candidates(&mut self, chain_id: u64) -> Vec<Candidate>;
+    fn gas_config(&self) -> GasConfig;
 
     fn get_code(&self) -> Bytecode;
 
@@ -44,7 +44,6 @@ pub trait Strategy {
         block: NumHash,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
-        candidates: Vec<Candidate>,
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error>
     where
         T: PoolTransaction,
