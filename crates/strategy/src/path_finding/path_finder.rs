@@ -155,7 +155,7 @@ impl Strategy for PathFinder {
                         return acc;
                     }
                     // 2-1. Search optimal amount in liqudity range to get maximum profit
-                    let (amount, optimal_output) = match
+                    let (optimal_input, optimal_output) = match
                         self.golden_section_search(
                             &latest_state_provider,
                             min_liquidity,
@@ -169,16 +169,16 @@ impl Strategy for PathFinder {
                         }
                     };
 
-                    if amount < optimal_output {
+                    if optimal_input < optimal_output {
                         return acc;
                     }
 
-                    let profit = amount - optimal_output;
+                    let profit = optimal_output - optimal_input;
                     tracing::info!(
                         target: "path-finder",
                         event = "profit",
                         sub_event = "predicted",
-                        amount = %amount,
+                        amount = %optimal_input,
                         profit = %profit.div_ceil(U256::from(ONE_ETHER)),
                         route = ?quoter_route,
                         "get optimal amount and profit from golden section search",
@@ -206,7 +206,7 @@ impl Strategy for PathFinder {
                         serde_json::json!({
                         "block": block.number,
                         "token": quoter_route[0].srcToken.to_string(),
-                        "amount": amount.div_ceil(U256::from(ONE_ETHER)).to_string(),
+                        "amount": optimal_input.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "profit": profit.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "route": quoter_route.iter().map(|hop| format!("{:?}", hop)).collect::<Vec<_>>(),
                     });
@@ -232,7 +232,7 @@ impl Strategy for PathFinder {
                         self.call_execute(
                             &latest_state_provider,
                             (executeCall {
-                                amounts: vec![amount],
+                                amounts: vec![optimal_input],
                                 routes: vec![router_route.clone()],
                             }).abi_encode()
                         )
@@ -265,7 +265,7 @@ impl Strategy for PathFinder {
                     );
 
                     // 2-5. accumulate result
-                    acc.0.push(amount);
+                    acc.0.push(optimal_input);
                     acc.1.push(router_route.clone());
                     for item in clean_states {
                         if let Some(storage_keys) = acc.2.get_mut(&item.address) {
@@ -388,12 +388,12 @@ impl PathFinder {
         let mut mid2 =
             left + (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
 
-        let (mut profit1, mut profit2) = join(
+        let (mut mid1_output, mut mid2_output) = join(
             || self.get_profit(latest_state_provider, mid1, hops.to_owned()),
             || self.get_profit(latest_state_provider, mid2, hops.to_owned()),
         );
 
-        if profit1.is_none() || profit2.is_none() {
+        if mid1_output.is_none() || mid2_output.is_none() {
             return None;
         }
         for _ in 0..MAX_SEARCH_DEPTH {
@@ -401,33 +401,33 @@ impl PathFinder {
                 break;
             }
 
-            if profit1 < profit2 {
+            if mid1_output < mid2_output {
                 left = mid1;
                 mid1 = mid2;
-                profit1 = profit2;
+                mid1_output = mid2_output;
 
                 let diff = right - left;
                 mid2 = left
                     + (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
-                profit2 = self.get_profit(latest_state_provider, mid2, hops.to_owned());
-                profit2?;
+                mid2_output = self.get_profit(latest_state_provider, mid2, hops.to_owned());
+                mid2_output?;
             } else {
                 right = mid2;
                 mid2 = mid1;
-                profit2 = profit1;
+                mid2_output = mid1_output;
 
                 let diff = right - left;
                 mid1 = right
                     - (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
-                profit1 = self.get_profit(latest_state_provider, mid1, hops.to_owned());
-                profit1?;
+                mid1_output = self.get_profit(latest_state_provider, mid1, hops.to_owned());
+                mid1_output?;
             }
         }
 
-        if profit1.unwrap() >= profit2.unwrap() {
-            Some((mid1, profit1.unwrap()))
+        if mid1_output.unwrap() >= mid2_output.unwrap() {
+            Some((mid1, mid1_output.unwrap()))
         } else {
-            Some((mid2, profit2.unwrap()))
+            Some((mid2, mid2_output.unwrap()))
         }
     }
 }
