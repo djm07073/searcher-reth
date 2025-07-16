@@ -88,6 +88,7 @@ impl SearcherExEx {
                     // transactions
                     let candidates = strategy.get_or_load_candidates(chain_id);
                     let profitable_candidates = strategy.find_profitable_candidates(
+                        num_hash,
                         latest_state_provider,
                         pending_txs,
                         candidates.clone(),

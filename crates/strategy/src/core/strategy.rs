@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use alloy_eips::NumHash;
 use alloy_primitives::{Address, FixedBytes, U256, address, map::HashSet};
 use alloy_rpc_types::{AccessList, AccessListItem};
 use alloy_sol_types::SolStruct;
@@ -40,6 +41,7 @@ pub trait Strategy {
     /// Finds profitable candidates from the pending transactions and candidates.
     fn find_profitable_candidates<T, DB>(
         &mut self,
+        block: NumHash,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
         pending_txs: Vec<T>,
         candidates: Vec<Candidate>,
