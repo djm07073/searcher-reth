@@ -21,8 +21,9 @@ sol! {
     }
 
     // Calculate the profit for a given route
+    // quoterCalldata: []QuoterHop
     #[derive(Debug)]
-    function getProfit(uint256 amount, QuoterHop[] memory route) view external returns (uint256 profit);
+    function getProfit(uint256 amount, bytes memory quoterCalldata) view external returns (uint256 profit);
 
     // basic elements of the path finding contract
     #[derive(Debug)]
@@ -39,30 +40,6 @@ sol! {
     #[derive(Debug)]
     function execute(
         uint256[] memory amounts,
-        RouterHop[][] memory routes
+        bytes[] memory executorCalldata // [][]RouterHop
     ) external returns (uint256 profit);
-}
-
-impl From<Hop> for RouterHop {
-    fn from(hop: Hop) -> Self {
-        Self {
-            dexType: hop.dexType,
-            router: hop.router,
-            srcToken: hop.srcToken,
-            dstToken: hop.dstToken,
-            metadata: hop.metadata,
-        }
-    }
-}
-
-impl From<Hop> for QuoterHop {
-    fn from(hop: Hop) -> Self {
-        Self {
-            dexType: hop.dexType,
-            quoter: hop.quoter,
-            srcToken: hop.srcToken,
-            dstToken: hop.dstToken,
-            metadata: hop.metadata,
-        }
-    }
 }
