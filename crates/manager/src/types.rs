@@ -34,7 +34,7 @@ pub struct CandidateEntry {
     pub initial_token: Address,
 
     #[serde(deserialize_with = "deserialize_hex_string")]
-    pub encoded_calldata: Vec<u8>,
+    pub encoded: Vec<u8>,
 }
 
 pub type CandidateMap = HashMap<String, Vec<CandidateEntry>>;
@@ -48,30 +48,30 @@ mod tests {
     fn test_deserialize_candidate_entry() {
         let json = r#"{
             "initial_token": "0x1111111111111111111111111111111111111111",
-            "encoded_calldata": "0xdeadbeef"
+            "encoded": "0xdeadbeef"
         }"#;
         let entry: CandidateEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.initial_token, Address::from_slice(&[0x11u8; 20]));
-        assert_eq!(entry.encoded_calldata, vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(entry.encoded, vec![0xde, 0xad, 0xbe, 0xef]);
 
         let json = r#"{
             "initial_token": "2222222222222222222222222222222222222222",
-            "encoded_calldata": "cafebabe"
+            "encoded": "cafebabe"
         }"#;
         let entry: CandidateEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.initial_token, Address::from_slice(&[0x22u8; 20]));
-        assert_eq!(entry.encoded_calldata, vec![0xca, 0xfe, 0xba, 0xbe]);
+        assert_eq!(entry.encoded, vec![0xca, 0xfe, 0xba, 0xbe]);
 
         let json = r#"{
             "initial_token": "0x1234",
-            "encoded_calldata": "0x00"
+            "encoded": "0x00"
         }"#;
         let result: Result<CandidateEntry, _> = serde_json::from_str(json);
         assert!(result.is_err());
 
         let json = r#"{
             "initial_token": "0x1111111111111111111111111111111111111111",
-            "encoded_calldata": "0xzzzz"
+            "encoded": "0xzzzz"
         }"#;
         let result: Result<CandidateEntry, _> = serde_json::from_str(json);
         assert!(result.is_err());

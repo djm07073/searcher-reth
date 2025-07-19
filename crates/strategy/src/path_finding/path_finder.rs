@@ -139,7 +139,7 @@ impl Strategy for PathFinder {
                 },
                 |mut acc, candidate| {
                     // 2-0. Get initial balance of vault
-                    let CandidateEntry { initial_token, encoded_calldata } = candidate;
+                    let CandidateEntry { initial_token, encoded: encoded_calldata } = candidate;
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
                     }
@@ -156,7 +156,7 @@ impl Strategy for PathFinder {
                         }
                     };
                     // 2-1. Search optimal amount in liquidity range to get maximum profit
-                    let (optimal_input, optimal_output) = match self.golden_section_search(
+                    let (golden_input, golden_output) = match self.golden_section_search(
                         &latest_state_provider,
                         min_liquidity,
                         effective_max_liquidity,
@@ -168,11 +168,11 @@ impl Strategy for PathFinder {
                         }
                     };
 
-                    if optimal_input > optimal_output {
+                    if golden_input > golden_output {
                         return acc;
                     }
 
-                    let profit = optimal_output - optimal_input;
+                    let profit = golden_output - golden_input;
 
                     let route_info = match <Vec<Hop>>::abi_decode(encoded_calldata) {
                         std::result::Result::Ok(hops) => format!("Route: {:?}", hops),
@@ -184,7 +184,7 @@ impl Strategy for PathFinder {
                         target: "path-finder",
                         event = "profit",
                         sub_event = "predicted",
-                        amount = %optimal_input,
+                        amount = %golden_input,
                         profit = %profit.div_ceil(U256::from(ONE_ETHER)),
                         calldata = route_info,
                         "get optimal amount and profit from golden section search",
@@ -209,7 +209,7 @@ impl Strategy for PathFinder {
 
                     let profit_info = serde_json::json!({
                         "block": block.number,
-                        "amount": optimal_input.div_ceil(U256::from(ONE_ETHER)).to_string(),
+                        "amount": golden_input.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "profit": profit.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "route": route_info,
                     });
@@ -234,7 +234,7 @@ impl Strategy for PathFinder {
                     let ResultAndState { result: _, state } = match self.call_execute(
                         &latest_state_provider,
                         (executeCall {
-                            amounts: vec![optimal_input],
+                            amounts: vec![golden_input],
                             calldata: vec![encoded_calldata.clone().into()],
                         })
                         .abi_encode(),
@@ -261,13 +261,13 @@ impl Strategy for PathFinder {
                         event = "profit",
                         sub_event = "predicted",
                         filter = "dirty states",
-                        profit = %optimal_output,
+                        profit = %golden_output,
                         route = ?encoded_calldata,
                         "filtered by dirty states",
                     );
 
                     // 2-5. accumulate result
-                    acc.0.push(optimal_input);
+                    acc.0.push(golden_input);
                     acc.1.push(Bytes::from(encoded_calldata.clone()));
                     for item in clean_states {
                         if let Some(storage_keys) = acc.2.get_mut(&item.address) {
@@ -331,7 +331,7 @@ impl PathFinder {
         let mut balances = HashMap::new();
         let balance_call = (balanceOfCall { account: vault }).abi_encode();
         for candidate in candidates {
-            let CandidateEntry { initial_token, encoded_calldata: _ } = candidate;
+            let CandidateEntry { initial_token, encoded: _ } = candidate;
             match evm.transact_system_call(*initial_token, balance_call.clone().into()) {
                 std::result::Result::Ok(result) => {
                     if let Some(output_bytes) = result.output() {
