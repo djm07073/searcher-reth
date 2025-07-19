@@ -1,28 +1,19 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{ collections::HashMap, sync::{ Arc, atomic::{ AtomicBool, Ordering } } };
 
-use crate::{
-    core::strategy::Strategy,
-    path_finding::{Hop, balanceOfCall},
-};
+use crate::{ core::strategy::Strategy, path_finding::{ Hop, balanceOfCall } };
 use alloy_eips::NumHash;
-use alloy_primitives::{Address, B256, Bytes, U256};
-use alloy_rpc_types::{AccessList, AccessListItem};
-use alloy_sol_types::{SolCall, SolValue};
-use eyre::{Error, Ok, Result};
-use rayon::{
-    iter::{IntoParallelRefIterator, ParallelIterator},
-    join,
-};
-use reth_provider::{BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider};
+use alloy_primitives::{ Address, B256, Bytes, U256 };
+use alloy_rpc_types::{ AccessList, AccessListItem };
+use alloy_sol_types::{ SolCall, SolValue };
+use eyre::{ Error, Ok, Result };
+use rayon::{ iter::{ IntoParallelRefIterator, ParallelIterator }, join };
+use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
 use reth_revm::{
-    Context, MainBuilder, MainContext, SystemCallEvm,
-    context::result::{ExecutionResult, Output, ResultAndState},
+    Context,
+    MainBuilder,
+    MainContext,
+    SystemCallEvm,
+    context::result::{ ExecutionResult, Output, ResultAndState },
     database::StateProviderDatabase,
     db::CacheDB,
     state::Bytecode,
@@ -30,7 +21,7 @@ use reth_revm::{
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
-    common::{CommonStrategyConfig, ONE_ETHER, StrategyConfig},
+    common::{ CommonStrategyConfig, ONE_ETHER, StrategyConfig },
     gas::GasConfig,
     types::CandidateEntry,
 };
@@ -84,12 +75,12 @@ impl Strategy for PathFinder {
     /// Finds profitable candidates from the pending transactions and candidates.
     fn find_profitable_candidates<
         T: PoolTransaction,
-        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
+        DB: DBProvider + BlockHashReader + StateCommitmentProvider
     >(
         &mut self,
         block: NumHash,
         latest_state_provider: LatestStateProviderRef<'_, DB>,
-        pending_txs: Vec<T>,
+        pending_txs: Vec<T>
     ) -> Result<Option<(Vec<u8>, AccessList)>, Error> {
         // 0. Check if the vault address is zero, if so, skip to make calldata
         let vault = self.get_vault();
@@ -107,8 +98,10 @@ impl Strategy for PathFinder {
         };
 
         // 1. Get dirty states from pending transactions
-        let dirty_states =
-            Self::collect_dirty_states_from_pending_txs(pending_txs, &latest_state_provider);
+        let dirty_states = Self::collect_dirty_states_from_pending_txs(
+            pending_txs,
+            &latest_state_provider
+        );
 
         // 2. Filter candidates based on liquidity and profit ranges
         let (max_profit, min_profit) = self.config.get_profit_range();
@@ -121,10 +114,16 @@ impl Strategy for PathFinder {
             max_liquidity = %max_liquidity,
             min_profit = %min_profit,
             max_profit = %max_profit,
-            "starting search with configured ranges",
+            "Starting search with configured ranges",
         );
 
         let candidates = self.candidates.clone();
+        tracing::info!(
+            target: "path-finder",
+            event = "candidates_count",
+            count = candidates.len(),
+            "Loaded candidates for path finding",
+        );
         let found_max_profit = Arc::new(AtomicBool::new(false));
         let result = candidates
             .par_iter()
@@ -133,8 +132,8 @@ impl Strategy for PathFinder {
             .fold(
                 || {
                     (
-                        Vec::<U256>::new(),                   // amounts
-                        Vec::<Bytes>::new(),                  // executor calldata
+                        Vec::<U256>::new(), // amounts
+                        Vec::<Bytes>::new(), // executor calldata
                         HashMap::<Address, Vec<B256>>::new(), // access lists
                     )
                 },
@@ -155,12 +154,14 @@ impl Strategy for PathFinder {
                         }
                     };
 
-                    let (golden_input, golden_output) = match self.golden_section_search(
-                        &latest_state_provider,
-                        min_liquidity,
-                        effective_max_liquidity,
-                        encoded_calldata,
-                    ) {
+                    let (golden_input, golden_output) = match
+                        self.golden_section_search(
+                            &latest_state_provider,
+                            min_liquidity,
+                            effective_max_liquidity,
+                            encoded_calldata
+                        )
+                    {
                         Some(res) if !found_max_profit.load(Ordering::Relaxed) => res,
                         _ => {
                             return acc;
@@ -205,7 +206,8 @@ impl Strategy for PathFinder {
                         return acc;
                     }
 
-                    let profit_info = serde_json::json!({
+                    let profit_info =
+                        serde_json::json!({
                         "block": block.number,
                         "amount": golden_input.div_ceil(U256::from(ONE_ETHER)).to_string(),
                         "profit": profit.div_ceil(U256::from(ONE_ETHER)).to_string(),
@@ -228,14 +230,15 @@ impl Strategy for PathFinder {
                         return acc;
                     }
 
-                    let ResultAndState { result: _, state } = match self.call_execute(
-                        &latest_state_provider,
-                        (executeCall {
-                            amounts: vec![golden_input],
-                            calldata: vec![encoded_calldata.clone().into()],
-                        })
-                        .abi_encode(),
-                    ) {
+                    let ResultAndState { result: _, state } = match
+                        self.call_execute(
+                            &latest_state_provider,
+                            (executeCall {
+                                amounts: vec![golden_input],
+                                calldata: vec![encoded_calldata.clone().into()],
+                            }).abi_encode()
+                        )
+                    {
                         std::result::Result::Ok(res) => res,
                         Err(e) => {
                             tracing::warn!(
@@ -274,7 +277,7 @@ impl Strategy for PathFinder {
                     }
 
                     acc
-                },
+                }
             )
             // Combine results from all threads
             .reduce_with(|mut acc, curr| {
@@ -296,7 +299,7 @@ impl Strategy for PathFinder {
                     access_map
                         .into_iter()
                         .map(|(address, storage_keys)| AccessListItem { address, storage_keys })
-                        .collect::<Vec<AccessListItem>>(),
+                        .collect::<Vec<AccessListItem>>()
                 );
 
                 if !routes.is_empty() {
@@ -320,7 +323,7 @@ impl PathFinder {
     fn get_balances<DB: DBProvider + BlockHashReader + StateCommitmentProvider>(
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         vault: Address,
-        candidates: &[CandidateEntry],
+        candidates: &[CandidateEntry]
     ) -> HashMap<Address, U256> {
         let db = CacheDB::new(StateProviderDatabase::new(latest_state_provider));
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
@@ -360,7 +363,7 @@ impl PathFinder {
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         min_liquidity: U256,
         max_liquidity: U256,
-        candidate: &[u8],
+        candidate: &[u8]
     ) -> Option<(U256, U256)> {
         let mut left = min_liquidity;
         let mut right = max_liquidity;
@@ -373,7 +376,7 @@ impl PathFinder {
 
         let (mut mid1_output, mut mid2_output) = join(
             || self.get_profit(latest_state_provider, mid1, candidate),
-            || self.get_profit(latest_state_provider, mid2, candidate),
+            || self.get_profit(latest_state_provider, mid2, candidate)
         );
 
         if mid1_output.is_none() || mid2_output.is_none() {
@@ -390,8 +393,9 @@ impl PathFinder {
                 mid1_output = mid2_output;
 
                 let diff = right - left;
-                mid2 = left
-                    + (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
+                mid2 =
+                    left +
+                    (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
                 mid2_output = self.get_profit(latest_state_provider, mid2, candidate);
                 mid2_output?;
             } else {
@@ -400,8 +404,9 @@ impl PathFinder {
                 mid2_output = mid1_output;
 
                 let diff = right - left;
-                mid1 = right
-                    - (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
+                mid1 =
+                    right -
+                    (diff * U256::from(INV_GOLDEN_RATIO_NUM)) / U256::from(INV_GOLDEN_RATIO_DEN);
                 mid1_output = self.get_profit(latest_state_provider, mid1, candidate);
                 mid1_output?;
             }
@@ -418,10 +423,9 @@ impl PathFinder {
         &self,
         latest_state_provider: &LatestStateProviderRef<'_, DB>,
         amount: U256,
-        encoded_calldata: &[u8],
+        encoded_calldata: &[u8]
     ) -> Option<U256>
-    where
-        DB: DBProvider + BlockHashReader + StateCommitmentProvider,
+        where DB: DBProvider + BlockHashReader + StateCommitmentProvider
     {
         let profit_call = getProfitCall { amount, calldata: encoded_calldata.to_owned().into() };
         let encoded = profit_call.abi_encode();
