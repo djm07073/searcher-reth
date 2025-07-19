@@ -1,9 +1,9 @@
-use std::{ collections::HashMap, fs::File, io::BufReader, path::PathBuf };
+use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
 
 use eyre::eyre;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
-use crate::{ gas::GasConfig, types::CalldataCandidate };
+use crate::{gas::GasConfig, types::CandidateEntry};
 
 /// Configuration for the PathFinder strategy
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,15 +28,15 @@ pub struct PathFinderConfig {
 }
 
 impl PathFinderConfig {
-    pub fn load_candidates(&self, chain_id: u64) -> eyre::Result<Vec<CalldataCandidate>> {
+    pub fn load_candidates(&self, chain_id: u64) -> eyre::Result<Vec<CandidateEntry>> {
         if !self.path.exists() {
             return Err(eyre!("Routes JSON file not found at: {}", self.path.display()));
         }
 
         let file = File::open(&self.path)?;
-        let route_candidates: HashMap<String, Vec<CalldataCandidate>> = serde_json
-            ::from_reader(BufReader::new(file))
-            .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
+        let route_candidates: HashMap<String, Vec<CandidateEntry>> =
+            serde_json::from_reader(BufReader::new(file))
+                .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
 
         let chain_routes = route_candidates
             .get(&chain_id.to_string())

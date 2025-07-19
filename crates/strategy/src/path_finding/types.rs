@@ -12,14 +12,16 @@ sol! {
     }
 
     // Calculate the profit for a given route
-    // quoterCalldata: []QuoterHop
+    // quoterCalldata: encoded []Hop
     #[derive(Debug)]
-    function getProfit(uint256 amount, bytes memory quoterCalldata) view external returns (uint256 profit);
-    
+    function getProfit(uint256 amount, bytes memory calldata) view external returns (uint256 profit);
+
     // Execute a route and return the profit
     #[derive(Debug)]
     function execute(
         uint256[] memory amounts,
-        bytes[] memory executorCalldata // [][]RouterHop
+        bytes[] memory calldata // [][]Hop
     ) external returns (uint256 profit);
+
+    function balanceOf(address account) view external returns (uint256);
 }

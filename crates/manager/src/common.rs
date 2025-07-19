@@ -3,7 +3,7 @@ use reth_revm::state::Bytecode;
 use reth_tracing::tracing;
 use serde::{Deserialize, Serialize};
 
-use crate::{gas::GasConfig, strategy::path_finder::PathFinderConfig, types::CalldataCandidate};
+use crate::{gas::GasConfig, strategy::path_finder::PathFinderConfig, types::CandidateEntry};
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
@@ -23,7 +23,7 @@ pub trait CommonStrategyConfig {
     fn get_contract(&self) -> Bytecode;
     fn get_profit_range(&self) -> (U256, U256);
     fn get_gas_config(&self) -> GasConfig;
-    fn load_candidates(&self, chain_id: u64) -> Vec<CalldataCandidate>;
+    fn load_candidates(&self, chain_id: u64) -> Vec<CandidateEntry>;
 }
 
 pub const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -104,7 +104,7 @@ impl CommonStrategyConfig for StrategyConfig {
         }
     }
 
-    fn load_candidates(&self, chain_id: u64) -> Vec<CalldataCandidate> {
+    fn load_candidates(&self, chain_id: u64) -> Vec<CandidateEntry> {
         match self {
             StrategyConfig::PathFinder(config) => {
                 match config.load_candidates(chain_id) {
