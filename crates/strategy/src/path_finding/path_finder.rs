@@ -72,8 +72,9 @@ impl Strategy for PathFinder {
         tracing::info!(
             target: "path-finder",
             event = "candidates_count",
+            chain_id = chain_id,
             count = candidates.len(),
-            "Loaded candidates for path finding",
+            "Prepare candidates for path finding",
         );
         self.candidates = candidates;
     }
