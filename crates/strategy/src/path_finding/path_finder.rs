@@ -69,6 +69,12 @@ impl Strategy for PathFinder {
     /// candidates are cyclic paths
     fn prepare(&mut self, chain_id: u64) {
         let candidates = self.config.load_candidates(chain_id);
+        tracing::info!(
+            target: "path-finder",
+            event = "candidates_count",
+            count = candidates.len(),
+            "Loaded candidates for path finding",
+        );
         self.candidates = candidates;
     }
 
@@ -118,12 +124,7 @@ impl Strategy for PathFinder {
         );
 
         let candidates = self.candidates.clone();
-        tracing::info!(
-            target: "path-finder",
-            event = "candidates_count",
-            count = candidates.len(),
-            "Loaded candidates for path finding",
-        );
+
         let found_max_profit = Arc::new(AtomicBool::new(false));
         let result = candidates
             .par_iter()
