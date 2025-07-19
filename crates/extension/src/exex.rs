@@ -51,18 +51,6 @@ impl SearcherExEx {
         let wallet = self.wallet.clone();
         let signal_rx = self.signal_rx.resubscribe();
         let vault = strategy.get_vault();
-        tracing::info!(
-            target: "reth-exex",
-            event = "before_prepare",
-            chain_id = ctx.components.network().chain_id(),
-            "Calling strategy.prepare"
-        );
-        strategy.prepare(ctx.components.network().chain_id());
-        tracing::info!(
-            target: "reth-exex",
-            event = "after_prepare",
-            "strategy.prepare finished"
-        );
         Ok(async move {
             let relayer_pool = Arc::new(
                 RelayerPool::new(
@@ -78,7 +66,7 @@ impl SearcherExEx {
                 event = "relayer_pool_started",
                 "Starting Relayer Pool"
             );
-
+            strategy.prepare(ctx.components.network().chain_id());
             while let Some(notification) = ctx.notifications.next().await {
                 if let Ok(ExExNotification::ChainCommitted { new: chain }) = notification {
                     let block = chain.tip();
