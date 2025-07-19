@@ -34,11 +34,11 @@ impl PathFinderConfig {
         }
 
         let file = File::open(&self.path)?;
-        let routes_data: HashMap<String, Vec<CalldataCandidate>> = serde_json
+        let route_candidates: HashMap<String, Vec<CalldataCandidate>> = serde_json
             ::from_reader(BufReader::new(file))
             .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
 
-        let chain_routes = routes_data
+        let chain_routes = route_candidates
             .get(&chain_id.to_string())
             .ok_or_else(|| eyre!("No routes found for chain_id: {}", chain_id))?;
 

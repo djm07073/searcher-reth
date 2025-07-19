@@ -17,9 +17,7 @@ fn deserialize_hex_string<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalldataCandidate {
     #[serde(deserialize_with = "deserialize_hex_string")]
-    pub quoter_calldata: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_hex_string")]
-    pub executor_calldata: Vec<u8>,
+    pub encoded_calldata: Vec<u8>,
 }
 
-pub type RoutesMap = HashMap<String, Vec<CalldataCandidate>>;
+pub type CandidateMap = HashMap<String, Vec<CalldataCandidate>>;
