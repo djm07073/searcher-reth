@@ -65,9 +65,13 @@ impl Strategy for PathFinder {
         self.config.get_vault()
     }
 
-    /// Load candidates and prepare routes
-    /// candidates are cyclic paths
     fn prepare(&mut self, chain_id: u64) {
+        tracing::info!(
+            target: "path-finder",
+            event = "prepare_enter",
+            chain_id = chain_id,
+            "Entered prepare()"
+        );
         let candidates = self.config.load_candidates(chain_id);
         tracing::info!(
             target: "path-finder",
@@ -77,6 +81,12 @@ impl Strategy for PathFinder {
             "Prepare candidates for path finding",
         );
         self.candidates = candidates;
+        tracing::info!(
+            target: "path-finder",
+            event = "prepare_exit",
+            chain_id = chain_id,
+            "Exiting prepare()"
+        );
     }
 
     /// Finds profitable candidates from the pending transactions and candidates.
