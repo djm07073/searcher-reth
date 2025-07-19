@@ -111,11 +111,12 @@ impl Strategy for PathFinder {
 
         // 2. Filter candidates based on liquidity and profit ranges
         let (max_profit, min_profit) = self.config.get_profit_range();
-        let (_min_liquidity, max_liquidity) = self.config.get_liquidity_range();
+        let (min_liquidity, max_liquidity) = self.config.get_liquidity_range();
+
         tracing::info!(
             target: "path-finder",
             event = "search_ranges",
-            min_liquidity = %U256::ZERO,
+            min_liquidity = %min_liquidity,
             max_liquidity = %max_liquidity,
             min_profit = %min_profit,
             max_profit = %max_profit,
@@ -157,7 +158,7 @@ impl Strategy for PathFinder {
                     // 2-1. Search optimal amount in liquidity range to get maximum profit
                     let (golden_input, golden_output) = match self.golden_section_search(
                         &latest_state_provider,
-                        U256::ZERO,
+                        min_liquidity,
                         effective_max_liquidity,
                         encoded_calldata,
                     ) {
