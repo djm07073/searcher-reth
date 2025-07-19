@@ -94,16 +94,17 @@ impl Strategy for PathFinder {
         // 0. Check if the vault address is zero, if so, skip to make calldata
         let vault = self.get_vault();
         let no_vault = vault == Address::ZERO;
-        let mut balance_map = HashMap::new();
-        if no_vault {
+
+        let balance_map = if no_vault {
             tracing::warn!(
                 target: "path-finder",
                 event = "no_vault",
                 "Vault address is zero, skipping candidate"
             );
+            HashMap::new()
         } else {
-            balance_map = Self::get_balances(&latest_state_provider, vault, &self.candidates);
-        }
+            Self::get_balances(&latest_state_provider, vault, &self.candidates)
+        };
 
         // 1. Get dirty states from pending transactions
         let dirty_states =
@@ -138,7 +139,6 @@ impl Strategy for PathFinder {
                     )
                 },
                 |mut acc, candidate| {
-                    // 2-0. Get initial balance of vault
                     let CandidateEntry { initial_token, encoded: encoded_calldata } = candidate;
                     if found_max_profit.load(Ordering::Relaxed) {
                         return acc;
@@ -147,15 +147,14 @@ impl Strategy for PathFinder {
                     let effective_max_liquidity = if no_vault {
                         max_liquidity
                     } else {
-                        let initial_balance = balance_map.get(initial_token).cloned();
-                        match initial_balance {
-                            Some(balance) => balance,
+                        match balance_map.get(initial_token) {
+                            Some(balance) => *balance,
                             None => {
                                 return acc;
                             }
                         }
                     };
-                    // 2-1. Search optimal amount in liquidity range to get maximum profit
+
                     let (golden_input, golden_output) = match self.golden_section_search(
                         &latest_state_provider,
                         min_liquidity,
@@ -180,6 +179,7 @@ impl Strategy for PathFinder {
                             format!("Failed to Decode Route: Raw bytes: {:?}", encoded_calldata)
                         }
                     };
+
                     tracing::info!(
                         target: "path-finder",
                         event = "profit",
@@ -190,11 +190,9 @@ impl Strategy for PathFinder {
                         "get optimal amount and profit from golden section search",
                     );
 
-                    // 2-2. Filter out based on profit range
                     if profit.ge(&max_profit) {
                         found_max_profit.store(true, Ordering::Relaxed);
-                    } else if profit.ge(&min_profit) {
-                    } else {
+                    } else if !profit.ge(&min_profit) {
                         tracing::info!(
                             target: "path-finder",
                             event = "profit",
@@ -229,8 +227,7 @@ impl Strategy for PathFinder {
                     if no_vault {
                         return acc;
                     }
-                    // 2-4. Execute execute function of vault to get access list and to check it has
-                    // dirty states, it it have, filter them out
+
                     let ResultAndState { result: _, state } = match self.call_execute(
                         &latest_state_provider,
                         (executeCall {
@@ -266,7 +263,6 @@ impl Strategy for PathFinder {
                         "filtered by dirty states",
                     );
 
-                    // 2-5. accumulate result
                     acc.0.push(golden_input);
                     acc.1.push(Bytes::from(encoded_calldata.clone()));
                     for item in clean_states {
@@ -441,7 +437,7 @@ impl PathFinder {
         }
         match result.unwrap() {
             ExecutionResult::Success { output: Output::Call(value), .. } => {
-                tracing::debug!(
+                tracing::info!(
                     target: "reth-exex",
                     event = "get_profit_call_success",
                     call = ?profit_call,
