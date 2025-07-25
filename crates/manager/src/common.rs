@@ -7,6 +7,8 @@ use crate::{gas::GasConfig, strategy::path_finder::PathFinderConfig, types::Cand
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
+pub const INDEXER_EXEX_ID: &str = "indexer";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum StrategyConfig {

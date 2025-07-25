@@ -1,5 +1,5 @@
 [package]
-name = "searcher-reth-extension"
+name = "searcher-reth-indexer"
 version = "0.0.0"
 publish = false
 edition.workspace = true
@@ -35,17 +35,14 @@ alloy-rpc-types.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
 
-# misc
-eyre.workspace = true
-
-clap.workspace = true
-
-searcher-reth-strategy.workspace = true
-searcher-reth-manager.workspace = true
-searcher-reth-indexer.workspace = true 
-
-rayon.workspace = true
 reth-transaction-pool.workspace = true
 
-# postgres 
 tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4"] }
+serde = { workspace = true, features = ["derive"] }
+lazy_static = "1.5.0"
+eyre.workspace = true
+futures = "0.3.31"
+chrono = "0.4.40"
+serde_yaml = "0.9.34"
+primitive-types = { version = "0.13.1", features = ["serde"] }
+tracing = "0.1.41"

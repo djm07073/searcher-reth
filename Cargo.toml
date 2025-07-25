@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/searcher-reth", "crates/extension", "crates/manager", "crates/strategy"]
+members = ["bin/searcher-reth", "crates/extension", "crates/manager", "crates/strategy", "crates/indexer"]
 resolver = "2"
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,7 @@ searcher-reth = { path = "bin/searcher-reth" }
 searcher-reth-extension = { path = "crates/extension" }
 searcher-reth-manager = { path = "crates/manager" }
 searcher-reth-strategy = { path = "crates/strategy" }
+searcher-reth-indexer = { path = "crates/indexer"}
 
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }

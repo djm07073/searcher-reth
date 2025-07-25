@@ -1,21 +1,107 @@
 use std::{future::Future, sync::Arc};
 
-use eyre::Result;
-use futures_util::StreamExt;
+use eyre::{Result, WrapErr};
+use futures_util::{StreamExt, TryStreamExt};
 use reth::network::NetworkInfo;
-use reth_exex::{ExExContext, ExExEvent, ExExNotification};
-use reth_node_api::{FullNodeComponents, FullNodeTypes};
+use reth::builder::NodeTypes;
+use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
+use reth_node_api::{ FullNodeComponents, FullNodeTypes };
 use reth_provider::{
     AccountReader, BlockHashReader, BlockReaderIdExt, ChainSpecProvider, DatabaseProviderFactory,
     LatestStateProviderRef, ReceiptProvider, StateCommitmentProvider,
 };
-use reth_tracing::tracing::{self};
-use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
+use reth_primitives::{TransactionSigned, Receipt};
+use reth_tracing::tracing::{ self };
+use reth_transaction_pool::{ EthPooledTransaction, TransactionPool };
 use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::core::strategy::Strategy;
 use tokio::sync::broadcast;
+use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
+use searcher_reth_indexer::{indexer::Indexer, db_writer::DbWriter };
+use alloy_consensus::{BlockHeader, Header, Block};
+use reth::primitives::{EthereumHardforks, NodePrimitives};
+use searcher_reth_indexer::utils::{Config, connect_to_postgres, create_tables};
+use tokio_postgres::Client;
 
-use crate::relayer_pool::{RelayerMessage, RelayerPool, WalletPool};
+pub struct IndexerExEx {}
+
+impl IndexerExEx {
+    pub fn new() -> Self {
+        Self {}
+    }
+    
+    pub async fn init<Node: FullNodeComponents>(
+        ctx: ExExContext<Node>,
+    ) -> Result<impl Future<Output = Result<()>>>
+    where
+        Node::Types: NodeTypes,
+        <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+        <Node::Types as NodeTypes>::Primitives: NodePrimitives<
+            BlockHeader = Header,
+            Block = Block<TransactionSigned>,
+            Receipt = Receipt,
+            SignedTx = TransactionSigned
+        >,
+    {
+        let config = Config::load().wrap_err("Failed to load configuration")?;
+    
+        let client = Arc::new(connect_to_postgres().await?);
+        create_tables(&client).await?;
+    
+        // Create indexer with all processors initialized internally
+        let indexer = Indexer::new(config);
+    
+        Ok(Self::indexer_exex(ctx, client, indexer))
+    }
+
+    async fn indexer_exex<Node: FullNodeComponents>(
+        mut ctx: ExExContext<Node>,
+        client: Arc<Client>,
+        indexer: Indexer<Node>,
+    ) -> Result<()>
+    where
+        Node::Types: NodeTypes,
+        <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+        <Node::Types as NodeTypes>::Primitives: NodePrimitives<
+            BlockHeader = Header,
+            Block = Block<TransactionSigned>,
+            Receipt = Receipt,
+            SignedTx = TransactionSigned
+        >,
+    {
+        // Process all new chain state notifications
+        while let Some(notification) = ctx.notifications.try_next().await? {
+            match &notification {
+                ExExNotification::ChainCommitted { new } => {
+                    // Process the committed blocks
+                    if let Err(e) = indexer.process_blocks(
+                        new.blocks_and_receipts(),
+                        &client,
+                        ctx.provider().clone(),
+                        Arc::new(ctx.evm_config().clone()),
+                        Arc::new(ctx.pool().clone()),
+                        Arc::new(ctx.network().clone()),
+                    ).await {
+                        tracing::warn!("Failed to process committed blocks: {}", e);
+                    }
+    
+                    // Advance ExEx
+                    ctx.events.send(ExExEvent::FinishedHeight(new.tip().num_hash()))?;
+                },
+                ExExNotification::ChainReorged { .. } => {
+                    // do nothing for reorg
+                    continue;
+                },
+                ExExNotification::ChainReverted { .. } => {
+                    // do nothing for revert
+                    continue;
+                },
+            }
+        }
+        Ok(())
+    }
+
+}
 
 pub struct SearcherExEx {
     pub wallet: Arc<WalletPool>,

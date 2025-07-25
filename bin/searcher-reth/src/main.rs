@@ -5,14 +5,14 @@ use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
-    exex::SearcherExEx,
+    exex::{IndexerExEx, SearcherExEx},
     relayer_pool::WalletPool,
     strategy::{
         core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter,
     },
     util::signal_manager::SignalManager,
 };
-use searcher_reth_manager::{common::PATH_FINDER_EXEX_ID, manager::ConfigManager};
+use searcher_reth_manager::{common::{INDEXER_EXEX_ID, PATH_FINDER_EXEX_ID}, manager::ConfigManager};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
@@ -35,6 +35,9 @@ fn main() -> eyre::Result<()> {
 
         // Install Exex for various strategies
         let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe());
+        // Init Exex for Indexer
+        let indexer_exex = IndexerExEx::new();
+        
         let mut node_builder = builder.node(EthereumNode::default());
 
         // Install PathFinder strategy
@@ -43,6 +46,11 @@ fn main() -> eyre::Result<()> {
                 config.clone().read().unwrap().get_strategy(PATH_FINDER_EXEX_ID).unwrap();
             let path_finder = PathFinder::new(path_finder_cfg);
             move |ctx| searcher_exex.run(ctx, path_finder)
+        });
+
+        // Install Indexer
+        node_builder = node_builder.install_exex(INDEXER_EXEX_ID, {
+            IndexerExEx::init
         });
 
         // TODO: Add other strategies here as needed
