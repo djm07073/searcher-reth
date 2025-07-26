@@ -1,6 +1,6 @@
 use crate::utils::Config;
 use crate::table_definitions::get_table;
-use crate::db_writer::DbWriter;
+use crate::db_writer::{DbWriter, RocksDB};
 use crate::datasets::{
     dolomite_borrow_position::process_dolomite_borrow_positions
 };
@@ -34,7 +34,8 @@ struct ProcessorInfo<Node: FullNodeComponents> {
     processor: for<'a> fn(
         &'a (RecoveredBlock<Block>, Vec<Receipt>),
         ProcessingComponents<Node>,
-        &'a mut DbWriter
+        &'a mut DbWriter,
+        &'a RocksDB
     ) -> futures::future::BoxFuture<'a, Result<()>>,
 }
 
@@ -45,7 +46,8 @@ impl<Node: FullNodeComponents> ProcessorInfo<Node> {
         processor: for<'a> fn(
             &'a (RecoveredBlock<Block>, Vec<Receipt>),
             ProcessingComponents<Node>,
-            &'a mut DbWriter
+            &'a mut DbWriter,
+            &'a RocksDB
         ) -> futures::future::BoxFuture<'a, Result<()>>,
     ) -> Self {
         Self {
@@ -65,7 +67,7 @@ impl<Node> Indexer<Node>
 where
     Node: FullNodeComponents + FullNodeTypes,
     Node::Types: NodeTypes,
-    <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+    //<Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
     <Node::Types as NodeTypes>::Primitives: NodePrimitives<
         BlockHeader = Header,
         Block = Block<TransactionSigned>,
@@ -98,7 +100,7 @@ where
             "dolomite_borrow_positions" => ProcessorInfo::new(
                 table_name,
                 processor_name,
-                |block_data, components, writer| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, writer))
+                |block_data, components, writer, db| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, writer, db))
             ),
             _ => return, // Skip unknown processors
         };
@@ -113,10 +115,11 @@ where
         &self,
         blocks_and_receipts: impl Iterator<Item = (&RecoveredBlock<Block>, &Vec<Receipt>)>,
         client: &Arc<Client>,
+        db: &RocksDB,
         provider: Node::Provider,
-        evm_config: Arc<Node::Evm>,
-        pool: Arc<Node::Pool>,
-        network: Arc<Node::Network>,
+        //evm_config: Arc<Node::Evm>,
+        //pool: Arc<Node::Pool>,
+        //network: Arc<Node::Network>,
     ) -> Result<()>
     where
         Node::Evm: ConfigureEvm
@@ -129,7 +132,7 @@ where
 
         for (block, receipts) in blocks_and_receipts {
             let block_number = block.number;
-            let block_id = BlockId::Number(BlockNumberOrTag::from(block_number));
+            //let block_id = BlockId::Number(BlockNumberOrTag::from(block_number));
 
             // Create EthAPI
             // let eth_api = crate::utils::create_eth_api::<Node>(
@@ -169,7 +172,7 @@ where
             };
 
             let block_data = (block, receipts);
-            if let Err(e) = self.process_block_data(&block_data, components).await {
+            if let Err(e) = self.process_block_data(&block_data, components, db).await {
                 warn!("Failed to process block {}: {}", block_number, e);
             }
         }
@@ -181,10 +184,11 @@ where
         &self,
         block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
         components: ProcessingComponents<Node>,
+        db: &RocksDB
     ) -> Result<()>
     where
         Node::Types: NodeTypes,
-        <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+        //<Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
         <Node::Types as NodeTypes>::Primitives: NodePrimitives<
             BlockHeader = Header,
             Block = Block<TransactionSigned>,
@@ -205,6 +209,7 @@ where
                 let processor_fn = processor.processor;
                 let block_data = block_data.clone();
                 let components = components.clone();
+                let db = db.clone();  // Clone db before spawn
                 let table = get_table(processor.table_name)
                     .expect(&format!("Table definition not found for {}", processor.table_name));
 
@@ -215,7 +220,7 @@ where
                         Ok(w) => w,
                         Err(e) => return Err((processor_name, e.to_string()))
                     };
-                    match processor_fn(&block_data, components, &mut writer).await {
+                    match processor_fn(&block_data, components, &mut writer, &db).await {
                         Ok(()) => {
                             match writer.finish().await {
                                 Ok(records_written) => Ok((processor_name, records_written, event_start_time.elapsed())),

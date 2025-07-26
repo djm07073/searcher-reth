@@ -15,6 +15,8 @@ use reth_tracing::tracing::info;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, collections::HashMap, env};
 use tokio_postgres::{Client, NoTls};
+use rocksdb::{DB, Options, ColumnFamilyDescriptor, ColumnFamily, DBWithThreadMode, SingleThreaded};
+use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {

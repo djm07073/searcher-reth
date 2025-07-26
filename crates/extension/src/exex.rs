@@ -19,23 +19,20 @@ use tokio::sync::broadcast;
 use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
 use searcher_reth_indexer::{indexer::Indexer, db_writer::DbWriter };
 use alloy_consensus::{BlockHeader, Header, Block};
-use reth::primitives::{EthereumHardforks, NodePrimitives};
+use reth::primitives::{ EthereumHardforks, NodePrimitives};
 use searcher_reth_indexer::utils::{Config, connect_to_postgres, create_tables};
+use searcher_reth_indexer::db_writer::RocksDB;
 use tokio_postgres::Client;
 
-pub struct IndexerExEx {}
+pub struct IndexerExEx;
 
 impl IndexerExEx {
-    pub fn new() -> Self {
-        Self {}
-    }
-    
     pub async fn init<Node: FullNodeComponents>(
         ctx: ExExContext<Node>,
     ) -> Result<impl Future<Output = Result<()>>>
     where
-        Node::Types: NodeTypes,
-        <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+        Node: FullNodeComponents,
+        //<Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
         <Node::Types as NodeTypes>::Primitives: NodePrimitives<
             BlockHeader = Header,
             Block = Block<TransactionSigned>,
@@ -47,21 +44,24 @@ impl IndexerExEx {
     
         let client = Arc::new(connect_to_postgres().await?);
         create_tables(&client).await?;
+
+        let db = RocksDB::init("rocksdb", &["default"]);
     
         // Create indexer with all processors initialized internally
         let indexer = Indexer::new(config);
     
-        Ok(Self::indexer_exex(ctx, client, indexer))
+        Ok(Self::indexer_exex(ctx, client, db, indexer))
     }
 
     async fn indexer_exex<Node: FullNodeComponents>(
         mut ctx: ExExContext<Node>,
         client: Arc<Client>,
+        db: RocksDB,
         indexer: Indexer<Node>,
     ) -> Result<()>
     where
         Node::Types: NodeTypes,
-        <Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
+        //<Node::Types as NodeTypes>::ChainSpec: EthereumHardforks,
         <Node::Types as NodeTypes>::Primitives: NodePrimitives<
             BlockHeader = Header,
             Block = Block<TransactionSigned>,
@@ -77,10 +77,11 @@ impl IndexerExEx {
                     if let Err(e) = indexer.process_blocks(
                         new.blocks_and_receipts(),
                         &client,
+                        &db,
                         ctx.provider().clone(),
-                        Arc::new(ctx.evm_config().clone()),
-                        Arc::new(ctx.pool().clone()),
-                        Arc::new(ctx.network().clone()),
+                        //Arc::new(ctx.evm_config().clone()),
+                        //Arc::new(ctx.pool().clone()),
+                        //Arc::new(ctx.network().clone()),
                     ).await {
                         tracing::warn!("Failed to process committed blocks: {}", e);
                     }

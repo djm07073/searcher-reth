@@ -35,8 +35,6 @@ fn main() -> eyre::Result<()> {
 
         // Install Exex for various strategies
         let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe());
-        // Init Exex for Indexer
-        let indexer_exex = IndexerExEx::new();
         
         let mut node_builder = builder.node(EthereumNode::default());
 

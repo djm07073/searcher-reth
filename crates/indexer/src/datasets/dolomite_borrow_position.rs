@@ -1,5 +1,5 @@
 use crate::record_values;
-use crate::db_writer::DbWriter;
+use crate::db_writer::{DbWriter, RocksDB};
 use alloy_sol_types::{sol, SolEvent};
 use alloy_primitives::{address, Address};
 use reth_primitives::{RecoveredBlock, Receipt, Block};
@@ -21,7 +21,8 @@ sol! {
 pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
     block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
     components: ProcessingComponents<Node>,
-    writer: &mut DbWriter
+    writer: &mut DbWriter,
+    db: &RocksDB,
 ) -> Result<()> {
     let block = &block_data.0;
     let receipts = &block_data.1;
@@ -40,18 +41,11 @@ pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
 
                 match BorrowPositionOpen::decode_raw_log(log.topics(), &log.data.data) {
                     Ok(create) => {
-                        writer
-                            .write_record(record_values![
-                            block_number as i64,
-                            tx.hash(),
-                            tx_idx as i64,
-                            log_idx as i64,
-                            log.address,
-                            create._borrower,
-                            create._borrowAccountNumber,
-                            Utc::now(),
-                        ])
-                            .await?;
+                        db.save(
+                            "dolomite_borrow_positions",
+                            &format!("{}", create._borrowAccountNumber),
+                            &format!("{}", create._borrower)
+                        );
                     }
                     Err(e) => {
                         debug!("Failed to decode dolomite borrow position open event: {:?}", e);

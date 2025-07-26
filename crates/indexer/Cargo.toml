@@ -46,3 +46,4 @@ chrono = "0.4.40"
 serde_yaml = "0.9.34"
 primitive-types = { version = "0.13.1", features = ["serde"] }
 tracing = "0.1.41"
+rocksdb = "0.23.0"
