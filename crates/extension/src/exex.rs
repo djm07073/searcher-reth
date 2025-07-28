@@ -17,7 +17,7 @@ use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::core::strategy::Strategy;
 use tokio::sync::broadcast;
 use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
-use searcher_reth_indexer::{indexer::Indexer, db_writer::DbWriter };
+use searcher_reth_indexer::{indexer::Indexer};
 use alloy_consensus::{BlockHeader, Header, Block};
 use reth::primitives::{ EthereumHardforks, NodePrimitives};
 use searcher_reth_indexer::utils::{Config, connect_to_postgres, create_tables};

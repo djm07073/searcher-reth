@@ -1,6 +1,6 @@
 use crate::utils::Config;
 use crate::table_definitions::get_table;
-use crate::db_writer::{DbWriter, RocksDB};
+use crate::db_writer::RocksDB;
 use crate::datasets::{
     dolomite_borrow_position::process_dolomite_borrow_positions
 };
@@ -34,7 +34,6 @@ struct ProcessorInfo<Node: FullNodeComponents> {
     processor: for<'a> fn(
         &'a (RecoveredBlock<Block>, Vec<Receipt>),
         ProcessingComponents<Node>,
-        &'a mut DbWriter,
         &'a RocksDB
     ) -> futures::future::BoxFuture<'a, Result<()>>,
 }
@@ -46,7 +45,6 @@ impl<Node: FullNodeComponents> ProcessorInfo<Node> {
         processor: for<'a> fn(
             &'a (RecoveredBlock<Block>, Vec<Receipt>),
             ProcessingComponents<Node>,
-            &'a mut DbWriter,
             &'a RocksDB
         ) -> futures::future::BoxFuture<'a, Result<()>>,
     ) -> Self {
@@ -100,7 +98,7 @@ where
             "dolomite_borrow_positions" => ProcessorInfo::new(
                 table_name,
                 processor_name,
-                |block_data, components, writer, db| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, writer, db))
+                |block_data, components, db| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, db))
             ),
             _ => return, // Skip unknown processors
         };
@@ -210,23 +208,14 @@ where
                 let block_data = block_data.clone();
                 let components = components.clone();
                 let db = db.clone();  // Clone db before spawn
-                let table = get_table(processor.table_name)
-                    .expect(&format!("Table definition not found for {}", processor.table_name));
+                // let table = get_table(processor.table_name)
+                //     .expect(&format!("Table definition not found for {}", processor.table_name));
 
                 // Spawn the task
                 let task = tokio::spawn(async move {
                     let event_start_time = Instant::now();
-                    let mut writer = match DbWriter::new(&components.client, table).await {
-                        Ok(w) => w,
-                        Err(e) => return Err((processor_name, e.to_string()))
-                    };
-                    match processor_fn(&block_data, components, &mut writer, &db).await {
-                        Ok(()) => {
-                            match writer.finish().await {
-                                Ok(records_written) => Ok((processor_name, records_written, event_start_time.elapsed())),
-                                Err(e) => Err((processor_name, e.to_string()))
-                            }
-                        },
+                    match processor_fn(&block_data, components, &db).await {
+                        Ok(()) => Ok((processor_name, event_start_time.elapsed())),
                         Err(e) => Err((processor_name, e.to_string()))
                     }
                 });
@@ -242,9 +231,9 @@ where
 
         for task in tasks {
             match task.await {
-                Ok(Ok((name, records, duration))) => {
-                    total_records += records;
-                    event_results.push((name, records, duration));
+                Ok(Ok((name, duration))) => {
+                    total_records += 1; // Assuming each event writes one record for now
+                    event_results.push((name, duration));
                 }
                 Ok(Err((name, error))) => {
                     failed_events.push((name, error));
@@ -262,8 +251,8 @@ where
         if !event_results.is_empty() {
             let events_summary: Vec<String> = event_results
                 .iter()
-                .map(|(name, records, time)| {
-                    format!("{}({}, {:.2}s)", name, records, time.as_secs_f64())
+                .map(|(name, time)| {
+                    format!("{}({}, {:.2}s)", name, 1, time.as_secs_f64())
                 })
                 .collect();
 

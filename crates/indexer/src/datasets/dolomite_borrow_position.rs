@@ -1,9 +1,7 @@
-use crate::record_values;
-use crate::db_writer::{DbWriter, RocksDB};
+use crate::db_writer::RocksDB;
 use alloy_sol_types::{sol, SolEvent};
 use alloy_primitives::{address, Address};
 use reth_primitives::{RecoveredBlock, Receipt, Block};
-use chrono::Utc;
 use eyre::Result;
 use reth_node_api::FullNodeComponents;
 use tracing::debug;
@@ -21,12 +19,10 @@ sol! {
 pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
     block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
     components: ProcessingComponents<Node>,
-    writer: &mut DbWriter,
     db: &RocksDB,
 ) -> Result<()> {
     let block = &block_data.0;
     let receipts = &block_data.1;
-    let block_number = block.number;
 
     // Iterate through transactions and their receipts
     for (tx_idx, (tx, receipt)) in block.body().transactions.iter().zip(receipts.iter()).enumerate() {
