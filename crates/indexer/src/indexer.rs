@@ -2,7 +2,8 @@ use crate::utils::Config;
 use crate::table_definitions::get_table;
 use crate::db_writer::RocksDB;
 use crate::datasets::{
-    dolomite_borrow_position::process_dolomite_borrow_positions
+    dolomite_borrow_position::process_dolomite_borrow_positions,
+    aave_execute_borrow::process_aave_execute_borrow,
 };
 use alloy_consensus::{Header};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
@@ -88,6 +89,7 @@ where
         // Register all available processors
         // e.g) indexer.add_processor("headers", "Headers");
         indexer.add_processor("dolomite_borrow_positions", "DolomiteBorrowPositions");
+        //indexer.add_processor("aave_borrow", "AaveBorrow");
 
         info!("Initialized indexer with processors: {:?}", indexer.list_processors());
         indexer
@@ -100,6 +102,11 @@ where
                 processor_name,
                 |block_data, components, db| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, db))
             ),
+            // "aave_borrow" => ProcessorInfo::new(
+            //     table_name,
+            //     processor_name,
+            //     |block_data, components, db| Box::pin(process_aave_execute_borrow::<Node>(block_data, components, db))
+            // ),
             _ => return, // Skip unknown processors
         };
         self.processors.push(processor);

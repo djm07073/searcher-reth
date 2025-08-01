@@ -6,17 +6,22 @@ use eyre::Result;
 use reth_node_api::FullNodeComponents;
 use tracing::debug;
 use crate::indexer::ProcessingComponents;
-// BorrowPositionProxyV2 address
-const BERA_DOLOMITE_CONTRACT_ADDRESS: Address = address!("0xC06271eb97d960F4034DDF953e16271CcB2B10BD");
+// Pool contarct address
+const ARBITRUM_AAVE_CONTRACT_ADDRESS: Address = address!("0x794a61358D6845594F94dc1DB02A252b5b4814aD");
 
 sol! {
-    event BorrowPositionOpen(
-        address indexed _borrower,
-        uint256 indexed _borrowAccountNumber
-    );
+    event Borrow(
+        address indexed reserve,
+        address user,
+        address indexed onBehalfOf,
+        uint256 amount,
+        uint8 interestRateMode,
+        uint256 borrowRate,
+        uint16 indexed referralCode
+      );
 }
 
-pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
+pub async fn process_aave_execute_borrow<Node: FullNodeComponents>(
     block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
     components: ProcessingComponents<Node>,
     db: &RocksDB,
@@ -29,22 +34,22 @@ pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
         // Process each log in the receipt
         for (log_idx, log) in receipt.logs.iter().enumerate() {
             // Filter on dolomite contract address
-            if log.address == BERA_DOLOMITE_CONTRACT_ADDRESS {
+            if log.address == ARBITRUM_AAVE_CONTRACT_ADDRESS {
                 // First check if this log matches our event signature
-                if log.topics().get(0) != Some(&BorrowPositionOpen::SIGNATURE_HASH) {
+                if log.topics().get(0) != Some(&Borrow::SIGNATURE_HASH) {
                     continue;
                 }
 
-                match BorrowPositionOpen::decode_raw_log(log.topics(), &log.data.data) {
-                    Ok(create) => {
+                match Borrow::decode_raw_log(log.topics(), &log.data.data) {
+                    Ok(create) => { 
                         db.save(
-                            "dolomite_borrow_positions",
-                            &format!("{}", create._borrowAccountNumber),
-                            &format!("{}", create._borrower)
+                            "aave_borrow",
+                            &format!("{}", create.onBehalfOf),
+                            &format!("{}_{}", create.reserve, create.amount)
                         );
                     }
                     Err(e) => {
-                        debug!("Failed to decode dolomite borrow position open event: {:?}", e);
+                        debug!("Failed to decode aave borrow event: {:?}", e);
                     }
                 }
             }
