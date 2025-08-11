@@ -1,9 +1,6 @@
-use crate::table_definitions::TableDefinition;
 use eyre::Result;
 use std::sync::Arc;
-use tokio_postgres::{Client, Statement, types::Type};
 use futures::pin_mut;
-use tokio_postgres::binary_copy::BinaryCopyInWriter;
 use alloy_primitives::{Address, FixedBytes, Uint, Signed};
 use std::collections::{HashSet, HashMap};
 use rocksdb::{DB, ColumnFamily, Options, ColumnFamilyDescriptor};

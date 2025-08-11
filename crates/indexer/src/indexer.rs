@@ -1,5 +1,4 @@
 use crate::utils::Config;
-use crate::table_definitions::get_table;
 use crate::db_writer::RocksDB;
 use crate::datasets::{
     dolomite_borrow_position::process_dolomite_borrow_positions,
@@ -7,17 +6,13 @@ use crate::datasets::{
 };
 use alloy_consensus::{Header};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag};
-// use alloy_rpc_types_trace::parity::{TraceResultsWithTransactionHash, TraceType};
 use eyre::Result;
 use reth::builder::NodeTypes;
 use reth::primitives::{EthereumHardforks, NodePrimitives};
 use reth_primitives::{TransactionSigned, Receipt, RecoveredBlock, Block};
 use reth_node_api::{ConfigureEvm, FullNodeComponents, FullNodeTypes};
-// use reth_rpc::EthApi;
-// use reth_rpc_eth_api::{FullEthApiTypes, helpers::{Call, LoadPendingBlock}};
 use reth_tracing::tracing::{info, warn};
 use std::{sync::Arc, time::Instant, collections::HashSet};
-use tokio_postgres::Client;
 
 // Structure to hold all the components needed for processing
 #[derive(Clone)]
@@ -25,7 +20,7 @@ pub struct ProcessingComponents<Node: FullNodeComponents> {
     // pub eth_api: Arc<EthApi<Node::Provider, Node::Pool, Node::Network, Node::Evm>>,
     // pub block_traces: Option<Vec<TraceResultsWithTransactionHash>>,
     pub provider: Node::Provider,
-    pub client: Arc<Client>,
+    //pub client: Arc<Client>,
     pub config: Config,
 }
 
@@ -119,7 +114,7 @@ where
     pub async fn process_blocks(
         &self,
         blocks_and_receipts: impl Iterator<Item = (&RecoveredBlock<Block>, &Vec<Receipt>)>,
-        client: &Arc<Client>,
+        //client: &Arc<Client>,
         db: &RocksDB,
         provider: Node::Provider,
         //evm_config: Arc<Node::Evm>,
@@ -172,7 +167,7 @@ where
                 // eth_api: eth_api.clone(),
                 // block_traces,
                 provider: provider.clone(),
-                client: Arc::clone(client),
+                //client: Arc::clone(client),
                 config: self.config.clone(),
             };
 

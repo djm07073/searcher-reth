@@ -20,9 +20,8 @@ use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
 use searcher_reth_indexer::{indexer::Indexer};
 use alloy_consensus::{BlockHeader, Header, Block};
 use reth::primitives::{ EthereumHardforks, NodePrimitives};
-use searcher_reth_indexer::utils::{Config, connect_to_postgres, create_tables};
+use searcher_reth_indexer::utils::Config;
 use searcher_reth_indexer::db_writer::RocksDB;
-use tokio_postgres::Client;
 
 pub struct IndexerExEx;
 
@@ -42,20 +41,20 @@ impl IndexerExEx {
     {
         let config = Config::load().wrap_err("Failed to load configuration")?;
     
-        let client = Arc::new(connect_to_postgres().await?);
-        create_tables(&client).await?;
+        //let client = Arc::new(connect_to_postgres().await?);
+        //create_tables(&client).await?;
 
         let db = RocksDB::init("rocksdb", &["default"]);
     
         // Create indexer with all processors initialized internally
         let indexer = Indexer::new(config);
     
-        Ok(Self::indexer_exex(ctx, client, db, indexer))
+        Ok(Self::indexer_exex(ctx, db, indexer))
     }
 
     async fn indexer_exex<Node: FullNodeComponents>(
         mut ctx: ExExContext<Node>,
-        client: Arc<Client>,
+        //client: Arc<Client>,
         db: RocksDB,
         indexer: Indexer<Node>,
     ) -> Result<()>
@@ -76,7 +75,7 @@ impl IndexerExEx {
                     // Process the committed blocks
                     if let Err(e) = indexer.process_blocks(
                         new.blocks_and_receipts(),
-                        &client,
+                        //&client,
                         &db,
                         ctx.provider().clone(),
                         //Arc::new(ctx.evm_config().clone()),
