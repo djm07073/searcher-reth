@@ -17,3 +17,5 @@ alloy-primitives.workspace = true
 reth-revm.workspace = true
 serde_json.workspace = true
 alloy-serde = "1.0.20"
+rocksdb.workspace = true
+serde_yaml.workspace = true

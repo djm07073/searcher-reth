@@ -12,7 +12,7 @@ use searcher_reth_extension::{
     },
     util::signal_manager::SignalManager,
 };
-use searcher_reth_manager::{common::{INDEXER_EXEX_ID, PATH_FINDER_EXEX_ID}, manager::ConfigManager};
+use searcher_reth_manager::{common::{LIQUIDATOR_EXEX_ID, PATH_FINDER_EXEX_ID}, manager::ConfigManager};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
@@ -47,7 +47,7 @@ fn main() -> eyre::Result<()> {
         });
 
         // Install Indexer
-        node_builder = node_builder.install_exex(INDEXER_EXEX_ID, {
+        node_builder = node_builder.install_exex(LIQUIDATOR_EXEX_ID, {
             IndexerExEx::init
         });
 
