@@ -18,8 +18,8 @@ use searcher_reth_strategy::core::strategy::Strategy;
 use tokio::sync::broadcast;
 use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
 use searcher_reth_indexer::{indexer::Indexer};
-use alloy_consensus::{BlockHeader, Header, Block};
-use reth::primitives::{ EthereumHardforks, NodePrimitives};
+use alloy_consensus::{Header, Block};
+use reth::primitives::{NodePrimitives};
 use searcher_reth_indexer::utils::Config;
 use searcher_reth_indexer::db_writer::RocksDB;
 

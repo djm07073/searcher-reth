@@ -86,3 +86,9 @@ rayon = "1.10.0"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 once_cell = "1"
+
+#rocksdb
+rocksdb = "0.23.0"
+
+# todo: replace it with toml
+serde_yaml = "0.9.34"

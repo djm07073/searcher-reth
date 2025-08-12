@@ -9464,8 +9464,10 @@ dependencies = [
  "eyre",
  "reth-revm",
  "reth-tracing",
+ "rocksdb",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tokio",
  "toml",
 ]
