@@ -8,7 +8,3 @@ pub mod util {
 pub mod strategy {
     pub use searcher_reth_strategy::*;
 }
-
-pub mod indexer {
-    pub use searcher_reth_indexer::*;
-}

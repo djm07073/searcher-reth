@@ -1,11 +1,11 @@
-use crate::db_writer::RocksDB;
+use crate::liquidator::db_writer::RocksDB;
 use alloy_sol_types::{sol, SolEvent};
 use alloy_primitives::{address, Address};
 use reth_primitives::{RecoveredBlock, Receipt, Block};
 use eyre::Result;
 use reth_node_api::FullNodeComponents;
-use tracing::debug;
-use crate::indexer::ProcessingComponents;
+use reth_tracing::tracing::debug;
+use crate::liquidator::ProcessingComponents;
 // BorrowPositionProxyV2 address
 const BERA_DOLOMITE_CONTRACT_ADDRESS: Address = address!("0xC06271eb97d960F4034DDF953e16271CcB2B10BD");
 

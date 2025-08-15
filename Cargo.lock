@@ -4018,24 +4018,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "impl-codec"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d40b9d5e17727407e55028eafc22b2dc68781786e6d7eb8a21103f5058e3a14"
-dependencies = [
- "parity-scale-codec",
-]
-
-[[package]]
-name = "impl-serde"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a143eada6a1ec4aefa5049037a26a6d597bfd64f8c026d07b77133e02b7dd0b"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "impl-trait-for-tuples"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5649,20 +5631,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
 dependencies = [
  "fixed-hash",
- "impl-codec 0.6.0",
+ "impl-codec",
  "uint 0.9.5",
-]
-
-[[package]]
-name = "primitive-types"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d15600a7d856470b7d278b3fe0e311fe28c2526348549f8ef2ff7db3299c87f5"
-dependencies = [
- "fixed-hash",
- "impl-codec 0.7.1",
- "impl-serde",
- "uint 0.10.0",
 ]
 
 [[package]]
@@ -9048,7 +9018,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "parity-scale-codec",
- "primitive-types 0.12.2",
+ "primitive-types",
  "proptest",
  "rand 0.8.5",
  "rand 0.9.1",
@@ -9408,49 +9378,9 @@ dependencies = [
  "reth-revm",
  "reth-tracing",
  "reth-transaction-pool",
- "searcher-reth-indexer",
  "searcher-reth-manager",
  "searcher-reth-strategy",
  "tokio",
-]
-
-[[package]]
-name = "searcher-reth-indexer"
-version = "0.0.0"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-genesis",
- "alloy-network",
- "alloy-primitives",
- "alloy-rlp",
- "alloy-rpc-types",
- "alloy-signer-local",
- "alloy-sol-types",
- "chrono",
- "eyre",
- "futures",
- "futures-util",
- "lazy_static",
- "primitive-types 0.13.1",
- "reth",
- "reth-chainspec",
- "reth-evm",
- "reth-execution-errors",
- "reth-execution-types",
- "reth-exex",
- "reth-node-api",
- "reth-node-ethereum",
- "reth-primitives",
- "reth-provider",
- "reth-revm",
- "reth-tracing",
- "reth-transaction-pool",
- "rocksdb",
- "serde",
- "serde_yaml",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -9487,6 +9417,7 @@ dependencies = [
  "alloy-sol-types",
  "chrono",
  "eyre",
+ "futures",
  "futures-util",
  "once_cell",
  "rayon",
@@ -9504,6 +9435,7 @@ dependencies = [
  "reth-revm",
  "reth-tracing",
  "reth-transaction-pool",
+ "rocksdb",
  "searcher-reth-manager",
  "serde_json",
  "tokio",

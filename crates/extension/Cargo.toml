@@ -42,7 +42,6 @@ clap.workspace = true
 
 searcher-reth-strategy.workspace = true
 searcher-reth-manager.workspace = true
-searcher-reth-indexer.workspace = true 
 
 rayon.workspace = true
 reth-transaction-pool.workspace = true

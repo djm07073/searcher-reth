@@ -3,7 +3,11 @@ use reth_revm::state::Bytecode;
 use reth_tracing::tracing;
 use serde::{Deserialize, Serialize};
 
-use crate::{gas::GasConfig, strategy::{path_finder::PathFinderConfig, liquidator::LiquidatorConfig}, types::CandidateEntry};
+use crate::{
+    gas::GasConfig,
+    strategy::{path_finder::PathFinderConfig, liquidator::LiquidatorConfig},
+    types::StrategyCandidates
+};
 
 // Strategy configuration
 pub const PATH_FINDER_EXEX_ID: &str = "path-finder";
@@ -26,7 +30,7 @@ pub trait CommonStrategyConfig {
     fn get_contract(&self) -> Bytecode;
     fn get_profit_range(&self) -> (U256, U256);
     fn get_gas_config(&self) -> GasConfig;
-    fn load_candidates(&self, chain_id: u64) -> Vec<CandidateEntry>;
+    fn load_candidates(&self, chain_id: u64) -> StrategyCandidates;
 }
 
 pub const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
@@ -34,9 +38,8 @@ pub const ONE_ETHER: u128 = 1_000_000_000_000_000_000;
 impl CommonStrategyConfig for StrategyConfig {
     fn get_exex_id(&self) -> &'static str {
         match self {
-            StrategyConfig::PathFinder(_) => PATH_FINDER_EXEX_ID,
-            StrategyConfig::Liquidator(_) => LIQUIDATOR_EXEX_ID,
-            // TODO: Add other strategy configurations
+            StrategyConfig::PathFinder(_) => "path-finder",
+            StrategyConfig::Liquidator(_) => "liquidator",
         }
     }
 
@@ -151,7 +154,7 @@ impl CommonStrategyConfig for StrategyConfig {
         }
     }
 
-    fn load_candidates(&self, chain_id: u64) -> Vec<CandidateEntry> {
+    fn load_candidates(&self, chain_id: u64) -> StrategyCandidates {
         match self {
             StrategyConfig::PathFinder(config) => {
                 match config.load_candidates(chain_id) {
@@ -161,17 +164,25 @@ impl CommonStrategyConfig for StrategyConfig {
                             candidates.len(),
                             chain_id
                         );
-                        candidates
+                        StrategyCandidates::Candidates(candidates)
                     }
                     Err(e) => {
                         tracing::error!("Failed to load candidates: {}", e);
-                        vec![] // Return an empty vector on error
+                        StrategyCandidates::Candidates(vec![]) // Return an empty vector on error
                     }
                 }
             },
             StrategyConfig::Liquidator(config) => {
-                // TODO: what candidates to load for liquidator?
-                vec![]
+                match config.load_processors(chain_id) {
+                    Ok(processors) => {
+                        tracing::info!("Loaded {} processors for chain_id: {}", processors.len(), chain_id);
+                        StrategyCandidates::Processors(processors)
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to load processors: {}", e);
+                        StrategyCandidates::Processors(vec![]) // Return an empty vector on error
+                    }
+                }
             }
         }
     }

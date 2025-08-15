@@ -3,6 +3,29 @@ use alloy_primitives::{Address, FixedBytes, Uint, Signed};
 use std::collections::{HashSet, HashMap};
 use rocksdb::{DB, ColumnFamily, Options, ColumnFamilyDescriptor};
 
+// database table 이름 타입으로 정의 
+pub enum TableName {
+    DolomiteBorrowPositions,
+    AaveExecuteBorrow,
+}
+
+impl TableName {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "dolomite_borrow_positions" => Some(TableName::DolomiteBorrowPositions),
+            "aave_execute_borrow" => Some(TableName::AaveExecuteBorrow),
+            _ => None
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TableName::DolomiteBorrowPositions => "dolomite_borrow_positions",
+            TableName::AaveExecuteBorrow => "aave_execute_borrow",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RocksDB {
     db: Arc<DB>

@@ -5,10 +5,10 @@ use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
-    exex::{IndexerExEx, SearcherExEx},
+    exex::{SearcherExEx, LiquidatorExEx},
     relayer_pool::WalletPool,
     strategy::{
-        core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter,
+        core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter, liquidator::Liquidator,
     },
     util::signal_manager::SignalManager,
 };
@@ -35,6 +35,7 @@ fn main() -> eyre::Result<()> {
 
         // Install Exex for various strategies
         let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe());
+        let liquidator_exex = LiquidatorExEx::new(wallet, signal_manager.subscribe());
         
         let mut node_builder = builder.node(EthereumNode::default());
 
@@ -48,7 +49,9 @@ fn main() -> eyre::Result<()> {
 
         // Install Indexer
         node_builder = node_builder.install_exex(LIQUIDATOR_EXEX_ID, {
-            IndexerExEx::init
+            let liquidator_cfg = config.clone().read().unwrap().get_strategy(LIQUIDATOR_EXEX_ID).unwrap();
+            let liquidator = Liquidator::new(liquidator_cfg);
+            move |ctx| liquidator_exex.run(ctx, liquidator)
         });
 
         // TODO: Add other strategies here as needed
