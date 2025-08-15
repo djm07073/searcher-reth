@@ -1,0 +1,58 @@
+name: Test & Lint CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Rust CI Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Check formatting
+      run: |
+        cargo fmt --all -- --check
+        if [ $? -ne 0 ]; then
+          echo "::error::Code is not formatted. Please run 'cargo fmt' locally."
+          exit 1
+        fi
+    
+    - name: Run clippy
+      run: |
+        cargo clippy --all --all-targets -- -D warnings
+        if [ $? -ne 0 ]; then
+          echo "::error::Clippy found issues. Please fix them locally."
+          exit 1
+        fi
+    
+    - name: Run tests
+      run: |
+        cargo test --all
+        if [ $? -ne 0 ]; then
+          echo "::error::Tests failed. Please fix them locally."
+          exit 1
+        fi
