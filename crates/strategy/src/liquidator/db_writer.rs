@@ -1,7 +1,6 @@
 use std::sync::Arc;
-use alloy_primitives::{Address, FixedBytes, Uint, Signed};
-use std::collections::{HashSet, HashMap};
-use rocksdb::{DB, ColumnFamily, Options, ColumnFamilyDescriptor};
+use std::collections::HashSet;
+use rocksdb::{DB, Options, ColumnFamilyDescriptor};
 
 // database table 이름 타입으로 정의 
 pub enum TableName {

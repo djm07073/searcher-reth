@@ -3,9 +3,8 @@ use alloy_sol_types::{sol, SolEvent};
 use alloy_primitives::{address, Address};
 use reth_primitives::{RecoveredBlock, Receipt, Block};
 use eyre::Result;
-use reth_node_api::FullNodeComponents;
 use reth_tracing::tracing::debug;
-use crate::liquidator::ProcessingComponents;
+
 // Pool contarct address
 const ARBITRUM_AAVE_CONTRACT_ADDRESS: Address = address!("0x794a61358D6845594F94dc1DB02A252b5b4814aD");
 
@@ -21,9 +20,8 @@ sol! {
       );
 }
 
-pub async fn process_aave_execute_borrow<Node: FullNodeComponents>(
+pub async fn process_aave_execute_borrow(
     block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
-    components: ProcessingComponents<Node>,
     db: &RocksDB,
 ) -> Result<()> {
     let block = &block_data.0;

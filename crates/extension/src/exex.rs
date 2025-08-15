@@ -1,24 +1,20 @@
 use std::{future::Future, sync::Arc};
 
-use eyre::{Result, WrapErr};
-use futures_util::{StreamExt, TryStreamExt};
+use eyre::{Result};
+use futures_util::{StreamExt};
 use reth::network::NetworkInfo;
-use reth::builder::NodeTypes;
 use reth_exex::{ ExExContext, ExExEvent, ExExNotification };
 use reth_node_api::{ FullNodeComponents, FullNodeTypes };
 use reth_provider::{
     AccountReader, BlockHashReader, BlockReaderIdExt, ChainSpecProvider, DatabaseProviderFactory,
     LatestStateProviderRef, ReceiptProvider, StateCommitmentProvider,
 };
-use reth_primitives::{TransactionSigned, Receipt};
 use reth_tracing::tracing::{ self };
 use reth_transaction_pool::{ EthPooledTransaction, TransactionPool };
 use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::core::strategy::Strategy;
 use tokio::sync::broadcast;
 use crate::relayer_pool::{ RelayerMessage, RelayerPool, WalletPool };
-use alloy_consensus::{Header, Block};
-use reth::primitives::{NodePrimitives};
 
 pub struct LiquidatorExEx {
     pub wallet: Arc<WalletPool>,

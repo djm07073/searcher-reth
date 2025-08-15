@@ -6,19 +6,16 @@ use eyre::{Result, Error};
 use reth_revm::{
     state::Bytecode,
 };
-use reth_primitives::{TransactionSigned, Receipt, RecoveredBlock, Block, Header};
+use reth_primitives::{Receipt, RecoveredBlock, Block};
 use alloy_primitives::{ Address};
-use reth_node_api::{ConfigureEvm, FullNodeComponents};
 use reth_tracing::tracing;
 use reth_transaction_pool::PoolTransaction;
 use reth_provider::{ BlockHashReader, DBProvider, LatestStateProviderRef, StateCommitmentProvider };
-use reth::primitives::{ NodePrimitives};
 use searcher_reth_manager::{
     common::{ CommonStrategyConfig, StrategyConfig },
     gas::GasConfig,
     types::{StrategyCandidates}
 };
-use reth::builder::NodeTypes;
 use std::time::Instant;
 use crate::liquidator::db_writer::TableName;
 use crate::liquidator::datasets::{
@@ -27,30 +24,21 @@ use crate::liquidator::datasets::{
 };
 use crate::liquidator::LiquidatorTodoAction;
 
-// Structure to hold all the components needed for processing
-#[derive(Clone)]
-pub struct ProcessingComponents<Node: FullNodeComponents> {
-    pub provider: Node::Provider,
-    config: StrategyConfig,
-}
-
-struct ProcessorInfo<Node: FullNodeComponents> {
+struct ProcessorInfo {
     table_name: &'static str,
     processor_name: String,
     processor: for<'a> fn(
         &'a (RecoveredBlock<Block>, Vec<Receipt>),
-        ProcessingComponents<Node>,
         &'a RocksDB
     ) -> futures::future::BoxFuture<'a, Result<()>>,
 }
 
-impl<Node: FullNodeComponents> ProcessorInfo<Node> {
+impl ProcessorInfo {
     fn new(
         table_name: &'static str,
         processor_name: &str,
         processor: for<'a> fn(
             &'a (RecoveredBlock<Block>, Vec<Receipt>),
-            ProcessingComponents<Node>,
             &'a RocksDB
         ) -> futures::future::BoxFuture<'a, Result<()>>,
     ) -> Self {
@@ -62,21 +50,12 @@ impl<Node: FullNodeComponents> ProcessorInfo<Node> {
     }
 }
 
-pub struct Liquidator <Node: FullNodeComponents> {
-    processors: Vec<ProcessorInfo<Node>>,
+pub struct Liquidator{
+    processors: Vec<ProcessorInfo>,
     config: StrategyConfig,
 }
 
-impl<Node: FullNodeComponents> Strategy for Liquidator<Node>
-where
-    Node::Types: NodeTypes,
-    <Node::Types as NodeTypes>::Primitives: NodePrimitives<
-    BlockHeader = Header,
-    Block = Block<TransactionSigned>,
-    Receipt = Receipt,
-    SignedTx = TransactionSigned,
-    >,
-{
+impl Strategy for Liquidator {
     // TODO : define action for liquidator
     type Action = LiquidatorTodoAction;
 
@@ -141,21 +120,7 @@ where
 }
 
 
-impl<Node: FullNodeComponents> Liquidator<Node>
-where
-    Node::Types: NodeTypes,
-    <Node::Types as NodeTypes>::Primitives: NodePrimitives<
-    BlockHeader = Header,
-    Block = Block<TransactionSigned>,
-    Receipt = Receipt,
-    SignedTx = TransactionSigned,
-    >,
-    Node::Provider: reth::providers::BlockReader<Block = Block<TransactionSigned>>
-    + reth::providers::HeaderProvider<Header = Header>
-    + reth::providers::ReceiptProvider<Receipt = Receipt>
-    + reth::providers::TransactionsProvider<Transaction = TransactionSigned>,
-    Node::Evm: ConfigureEvm
-{
+impl Liquidator {
     // add_processor adds indexer processor to liquidator
     fn add_processor(&mut self, table_name: String, processor_name: String) {
         let table = match TableName::from_str(&table_name) {
@@ -167,12 +132,12 @@ where
             TableName::DolomiteBorrowPositions => ProcessorInfo::new(
                 table.as_str(),
                 &processor_name,
-                |block_data, components, db| Box::pin(process_dolomite_borrow_positions::<Node>(block_data, components, db))
+                |block_data, db| Box::pin(process_dolomite_borrow_positions(block_data, db))
             ),
             TableName::AaveExecuteBorrow => ProcessorInfo::new(
                 table.as_str(),
                 &processor_name,
-                |block_data, components, db| Box::pin(process_aave_execute_borrow::<Node>(block_data, components, db))
+                |block_data, db| Box::pin(process_aave_execute_borrow(block_data, db))
             ),
         };
         self.processors.push(processor);
@@ -186,10 +151,7 @@ where
         &self,
         blocks_and_receipts: impl Iterator<Item = (&RecoveredBlock<Block>, &Vec<Receipt>)>,
         db: &RocksDB,
-        provider: Node::Provider,
     ) -> Result<()>
-    where
-        Node::Evm: ConfigureEvm
     {
         // Convert the iterator items into owned values directly
         let blocks_and_receipts: Vec<_> = blocks_and_receipts
@@ -198,15 +160,8 @@ where
 
         for (block, receipts) in blocks_and_receipts {
             let block_number = block.number;
-            
-            // Create components for processing
-            let components = ProcessingComponents {
-                provider: provider.clone(),
-                config: self.config.clone(),
-            };
-
             let block_data = (block, receipts);
-            if let Err(e) = self.process_block_data(&block_data, components, db).await {
+            if let Err(e) = self.process_block_data(&block_data, db).await {
                 tracing::warn!("Failed to process block {}: {}", block_number, e);
             }
         }
@@ -217,17 +172,9 @@ where
     async fn process_block_data(
         &self,
         block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
-        components: ProcessingComponents<Node>,
         db: &RocksDB
     ) -> Result<()>
     where
-        Node::Types: NodeTypes,
-        <Node::Types as NodeTypes>::Primitives: NodePrimitives<
-            BlockHeader = Header,
-            Block = Block<TransactionSigned>,
-            Receipt = Receipt,
-            SignedTx = TransactionSigned
-        >,
     {
         let block_number = block_data.0.number;
 
@@ -240,13 +187,12 @@ where
             let processor_name = processor.processor_name.clone();
             let processor_fn = processor.processor;
             let block_data = block_data.clone();
-            let components = components.clone();
             let db = db.clone();  // Clone db before spawn
             
             // Spawn the task
             let task = tokio::spawn(async move {
                 let event_start_time = Instant::now();
-                match processor_fn(&block_data, components, &db).await {
+                match processor_fn(&block_data, &db).await {
                     Ok(()) => Ok((processor_name, event_start_time.elapsed())),
                     Err(e) => Err((processor_name, e.to_string()))
                 }

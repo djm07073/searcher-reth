@@ -34,8 +34,8 @@ fn main() -> eyre::Result<()> {
         });
 
         // Install Exex for various strategies
-        let searcher_exex = SearcherExEx::new(wallet, signal_manager.subscribe());
-        let liquidator_exex = LiquidatorExEx::new(wallet, signal_manager.subscribe());
+        let searcher_exex = SearcherExEx::new(wallet.clone(), signal_manager.subscribe());
+        let liquidator_exex = LiquidatorExEx::new(wallet.clone(), signal_manager.subscribe());
         
         let mut node_builder = builder.node(EthereumNode::default());
 

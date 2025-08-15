@@ -3,9 +3,8 @@ use alloy_sol_types::{sol, SolEvent};
 use alloy_primitives::{address, Address};
 use reth_primitives::{RecoveredBlock, Receipt, Block};
 use eyre::Result;
-use reth_node_api::FullNodeComponents;
 use reth_tracing::tracing::debug;
-use crate::liquidator::ProcessingComponents;
+
 // BorrowPositionProxyV2 address
 const BERA_DOLOMITE_CONTRACT_ADDRESS: Address = address!("0xC06271eb97d960F4034DDF953e16271CcB2B10BD");
 
@@ -16,9 +15,8 @@ sol! {
     );
 }
 
-pub async fn process_dolomite_borrow_positions<Node: FullNodeComponents>(
+pub async fn process_dolomite_borrow_positions(
     block_data: &(RecoveredBlock<Block>, Vec<Receipt>),
-    components: ProcessingComponents<Node>,
     db: &RocksDB,
 ) -> Result<()> {
     let block = &block_data.0;
