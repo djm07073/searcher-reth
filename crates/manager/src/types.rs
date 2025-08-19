@@ -2,12 +2,13 @@ pub type Element = Vec<u8>;
 
 pub type Candidate = Vec<Element>;
 
-use alloy_primitives::{ Address, hex };
-use serde::{ Deserialize, Deserializer, Serialize };
+use alloy_primitives::{Address, hex};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 fn deserialize_hex_string<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-    where D: Deserializer<'de>
+where
+    D: Deserializer<'de>,
 {
     let hex_str: String = Deserialize::deserialize(deserializer)?;
     let hex_str = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
@@ -15,7 +16,8 @@ fn deserialize_hex_string<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 }
 
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
-    where D: Deserializer<'de>
+where
+    D: Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     let s = s.strip_prefix("0x").unwrap_or(&s);
@@ -43,8 +45,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_candidate_entry() {
-        let json =
-            r#"{
+        let json = r#"{
             "initial_token": "0x1111111111111111111111111111111111111111",
             "encoded": "0xdeadbeef"
         }"#;
@@ -52,8 +53,7 @@ mod tests {
         assert_eq!(entry.initial_token, Address::from_slice(&[0x11u8; 20]));
         assert_eq!(entry.encoded, vec![0xde, 0xad, 0xbe, 0xef]);
 
-        let json =
-            r#"{
+        let json = r#"{
             "initial_token": "2222222222222222222222222222222222222222",
             "encoded": "cafebabe"
         }"#;
@@ -61,16 +61,14 @@ mod tests {
         assert_eq!(entry.initial_token, Address::from_slice(&[0x22u8; 20]));
         assert_eq!(entry.encoded, vec![0xca, 0xfe, 0xba, 0xbe]);
 
-        let json =
-            r#"{
+        let json = r#"{
             "initial_token": "0x1234",
             "encoded": "0x00"
         }"#;
         let result: Result<CandidateEntry, _> = serde_json::from_str(json);
         assert!(result.is_err());
 
-        let json =
-            r#"{
+        let json = r#"{
             "initial_token": "0x1111111111111111111111111111111111111111",
             "encoded": "0xzzzz"
         }"#;
