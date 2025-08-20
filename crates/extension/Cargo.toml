@@ -45,6 +45,3 @@ searcher-reth-manager.workspace = true
 
 rayon.workspace = true
 reth-transaction-pool.workspace = true
-
-# postgres 
-#tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4"] }

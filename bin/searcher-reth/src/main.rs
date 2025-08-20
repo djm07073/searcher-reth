@@ -1,3 +1,5 @@
+mod macros;
+
 use std::sync::{Arc, RwLock};
 
 use clap::Parser;
@@ -5,12 +7,8 @@ use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
-    exex::{LiquidatorExEx, SearcherExEx},
     relayer_pool::WalletPool,
-    strategy::{
-        core::strategy::Strategy, liquidator::Liquidator, path_finding::PathFinder,
-        profit_reporter::init_reporter,
-    },
+    strategy::{liquidator::Liquidator, path_finding::PathFinder, profit_reporter::init_reporter},
     util::signal_manager::SignalManager,
 };
 use searcher_reth_manager::{
@@ -37,28 +35,24 @@ fn main() -> eyre::Result<()> {
             std::process::exit(0);
         });
 
-        // Install Exex for various strategies
-        let searcher_exex = SearcherExEx::new(wallet.clone(), signal_manager.subscribe());
-        let liquidator_exex = LiquidatorExEx::new(wallet.clone(), signal_manager.subscribe());
-
+        // Install strategies
         let mut node_builder = builder.node(EthereumNode::default());
-
-        // Install PathFinder strategy
-        node_builder = node_builder.install_exex(PATH_FINDER_EXEX_ID, {
-            let path_finder_cfg =
-                config.clone().read().unwrap().get_strategy(PATH_FINDER_EXEX_ID).unwrap();
-            let path_finder = PathFinder::new(path_finder_cfg);
-            move |ctx| searcher_exex.run(ctx, path_finder)
-        });
-
-        // Install Indexer
-        node_builder = node_builder.install_exex(LIQUIDATOR_EXEX_ID, {
-            let liquidator_cfg =
-                config.clone().read().unwrap().get_strategy(LIQUIDATOR_EXEX_ID).unwrap();
-            let liquidator = Liquidator::new(liquidator_cfg);
-            move |ctx| liquidator_exex.run(ctx, liquidator)
-        });
-
+        node_builder = install_strategy!(
+            node_builder,
+            config,
+            wallet,
+            signal_manager,
+            PATH_FINDER_EXEX_ID,
+            PathFinder
+        );
+        node_builder = install_strategy!(
+            node_builder,
+            config,
+            wallet,
+            signal_manager,
+            LIQUIDATOR_EXEX_ID,
+            Liquidator
+        );
         // TODO: Add other strategies here as needed
         let handle = node_builder.launch().await?;
         handle.wait_for_node_exit().await
