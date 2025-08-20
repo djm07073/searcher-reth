@@ -1,8 +1,7 @@
-use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
+use crate::{gas::GasConfig, types::ProcessorEntry};
 use eyre::eyre;
 use serde::{Deserialize, Serialize};
-use crate::types::ProcessorEntry;
-use crate::gas::GasConfig;
+use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -51,11 +50,11 @@ impl LiquidatorConfig {
         let processors: HashMap<String, Vec<ProcessorEntry>> =
             serde_json::from_reader(BufReader::new(file))
                 .map_err(|e| eyre!("Failed to parse routes JSON: {}", e))?;
-        
+
         let chain_processors = processors
             .get(&chain_id.to_string())
             .ok_or_else(|| eyre!("No processors found for chain_id: {}", chain_id))?;
-        
+
         Ok(chain_processors.clone())
     }
 }

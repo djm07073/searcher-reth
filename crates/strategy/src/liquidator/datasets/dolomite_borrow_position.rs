@@ -1,12 +1,13 @@
 use crate::liquidator::db_writer::RocksDB;
-use alloy_sol_types::{sol, SolEvent};
-use alloy_primitives::{address, Address};
-use reth_primitives::{RecoveredBlock, Receipt, Block};
+use alloy_primitives::{Address, address};
+use alloy_sol_types::{SolEvent, sol};
 use eyre::Result;
+use reth_primitives::{Block, Receipt, RecoveredBlock};
 use reth_tracing::tracing::debug;
 
 // BorrowPositionProxyV2 address
-const BERA_DOLOMITE_CONTRACT_ADDRESS: Address = address!("0xC06271eb97d960F4034DDF953e16271CcB2B10BD");
+const BERA_DOLOMITE_CONTRACT_ADDRESS: Address =
+    address!("0xC06271eb97d960F4034DDF953e16271CcB2B10BD");
 
 sol! {
     event BorrowPositionOpen(
@@ -23,7 +24,8 @@ pub async fn process_dolomite_borrow_positions(
     let receipts = &block_data.1;
 
     // Iterate through transactions and their receipts
-    for (tx_idx, (tx, receipt)) in block.body().transactions.iter().zip(receipts.iter()).enumerate() {
+    for (tx_idx, (tx, receipt)) in block.body().transactions.iter().zip(receipts.iter()).enumerate()
+    {
         // Process each log in the receipt
         for (log_idx, log) in receipt.logs.iter().enumerate() {
             // Filter on dolomite contract address
@@ -38,7 +40,7 @@ pub async fn process_dolomite_borrow_positions(
                         db.save(
                             "dolomite_borrow_positions",
                             &format!("{}", create._borrowAccountNumber),
-                            &format!("{}", create._borrower)
+                            &format!("{}", create._borrower),
                         );
                     }
                     Err(e) => {
@@ -50,4 +52,3 @@ pub async fn process_dolomite_borrow_positions(
     }
     Ok(())
 }
-

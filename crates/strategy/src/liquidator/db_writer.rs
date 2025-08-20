@@ -1,8 +1,7 @@
-use std::sync::Arc;
-use std::collections::HashSet;
-use rocksdb::{DB, Options, ColumnFamilyDescriptor};
+use rocksdb::{ColumnFamilyDescriptor, DB, Options};
+use std::{collections::HashSet, sync::Arc};
 
-// database table 이름 타입으로 정의 
+// database table 이름 타입으로 정의
 pub enum TableName {
     DolomiteBorrowPositions,
     AaveExecuteBorrow,
@@ -13,7 +12,7 @@ impl TableName {
         match s {
             "dolomite_borrow_positions" => Some(TableName::DolomiteBorrowPositions),
             "aave_execute_borrow" => Some(TableName::AaveExecuteBorrow),
-            _ => None
+            _ => None,
         }
     }
 
@@ -27,7 +26,7 @@ impl TableName {
 
 #[derive(Clone)]
 pub struct RocksDB {
-    db: Arc<DB>
+    db: Arc<DB>,
 }
 
 impl RocksDB {
@@ -51,9 +50,7 @@ impl RocksDB {
             }
         }
 
-        RocksDB {
-            db: Arc::new(db)
-        }
+        RocksDB { db: Arc::new(db) }
     }
 
     pub fn save(&self, cf: &str, k: &str, v: &str) -> bool {
@@ -68,11 +65,11 @@ impl RocksDB {
                 let result = String::from_utf8(v).unwrap();
                 println!("Finding '{}' returns '{}'", k, result);
                 Some(result)
-            },
+            }
             Ok(None) => {
                 println!("Finding '{}' returns None", k);
                 None
-            },
+            }
             Err(e) => {
                 println!("Error retrieving value for {}: {}", k, e);
                 None

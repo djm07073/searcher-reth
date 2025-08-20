@@ -5,14 +5,18 @@ use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::error;
 use searcher_reth_extension::{
-    exex::{SearcherExEx, LiquidatorExEx},
+    exex::{LiquidatorExEx, SearcherExEx},
     relayer_pool::WalletPool,
     strategy::{
-        core::strategy::Strategy, path_finding::PathFinder, profit_reporter::init_reporter, liquidator::Liquidator,
+        core::strategy::Strategy, liquidator::Liquidator, path_finding::PathFinder,
+        profit_reporter::init_reporter,
     },
     util::signal_manager::SignalManager,
 };
-use searcher_reth_manager::{common::{LIQUIDATOR_EXEX_ID, PATH_FINDER_EXEX_ID}, manager::ConfigManager};
+use searcher_reth_manager::{
+    common::{LIQUIDATOR_EXEX_ID, PATH_FINDER_EXEX_ID},
+    manager::ConfigManager,
+};
 
 fn main() -> eyre::Result<()> {
     let config = Arc::new(RwLock::new(ConfigManager::from_file("env.toml")?));
@@ -36,7 +40,7 @@ fn main() -> eyre::Result<()> {
         // Install Exex for various strategies
         let searcher_exex = SearcherExEx::new(wallet.clone(), signal_manager.subscribe());
         let liquidator_exex = LiquidatorExEx::new(wallet.clone(), signal_manager.subscribe());
-        
+
         let mut node_builder = builder.node(EthereumNode::default());
 
         // Install PathFinder strategy
@@ -49,7 +53,8 @@ fn main() -> eyre::Result<()> {
 
         // Install Indexer
         node_builder = node_builder.install_exex(LIQUIDATOR_EXEX_ID, {
-            let liquidator_cfg = config.clone().read().unwrap().get_strategy(LIQUIDATOR_EXEX_ID).unwrap();
+            let liquidator_cfg =
+                config.clone().read().unwrap().get_strategy(LIQUIDATOR_EXEX_ID).unwrap();
             let liquidator = Liquidator::new(liquidator_cfg);
             move |ctx| liquidator_exex.run(ctx, liquidator)
         });

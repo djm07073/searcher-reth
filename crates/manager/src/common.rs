@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     gas::GasConfig,
-    strategy::{path_finder::PathFinderConfig, liquidator::LiquidatorConfig},
-    types::StrategyCandidates
+    strategy::{liquidator::LiquidatorConfig, path_finder::PathFinderConfig},
+    types::StrategyCandidates,
 };
 
 // Strategy configuration
@@ -18,7 +18,7 @@ pub const LIQUIDATOR_EXEX_ID: &str = "liquidator";
 pub enum StrategyConfig {
     #[serde(rename = "path-finder")]
     PathFinder(PathFinderConfig),
-    #[serde(rename = "liquidator")] 
+    #[serde(rename = "liquidator")]
     Liquidator(LiquidatorConfig),
     // #[serde(rename = "arbitrage")] Arbitrage(ArbitrageConfig),
 }
@@ -74,8 +74,7 @@ impl CommonStrategyConfig for StrategyConfig {
                     tracing::warn!("Invalid vault address, using default ZERO address");
                     Address::ZERO
                 }
-            }
-            // TODO: Add other strategy configurations
+            }, // TODO: Add other strategy configurations
         }
     }
 
@@ -100,7 +99,7 @@ impl CommonStrategyConfig for StrategyConfig {
                         Bytecode::default() // Return an empty bytecode on error
                     }
                 }
-            },
+            }
             StrategyConfig::Liquidator(config) => {
                 tracing::info!("Loading strategy contract for Liquidator: {:?}", config.contract);
                 let bytes = match hex::decode(config.contract.clone()) {
@@ -120,8 +119,7 @@ impl CommonStrategyConfig for StrategyConfig {
                         Bytecode::default() // Return an empty bytecode on error
                     }
                 }
-            }
-            // TODO: Add other strategy configurations
+            } // TODO: Add other strategy configurations
         }
     }
 
@@ -134,7 +132,7 @@ impl CommonStrategyConfig for StrategyConfig {
                     U256::from((max_profit * (ONE_ETHER as f64)) as u128),
                     U256::from((min_profit * (ONE_ETHER as f64)) as u128),
                 )
-            },
+            }
             StrategyConfig::Liquidator(config) => {
                 let max_profit = config.max_profit.parse::<f64>().unwrap();
                 let min_profit = config.min_profit.parse::<f64>().unwrap();
@@ -142,8 +140,7 @@ impl CommonStrategyConfig for StrategyConfig {
                     U256::from((max_profit * (ONE_ETHER as f64)) as u128),
                     U256::from((min_profit * (ONE_ETHER as f64)) as u128),
                 )
-            }
-             // TODO: Add other strategy configurations
+            } // TODO: Add other strategy configurations
         }
     }
 
@@ -171,11 +168,15 @@ impl CommonStrategyConfig for StrategyConfig {
                         StrategyCandidates::Candidates(vec![]) // Return an empty vector on error
                     }
                 }
-            },
+            }
             StrategyConfig::Liquidator(config) => {
                 match config.load_processors(chain_id) {
                     Ok(processors) => {
-                        tracing::info!("Loaded {} processors for chain_id: {}", processors.len(), chain_id);
+                        tracing::info!(
+                            "Loaded {} processors for chain_id: {}",
+                            processors.len(),
+                            chain_id
+                        );
                         StrategyCandidates::Processors(processors)
                     }
                     Err(e) => {

@@ -1,12 +1,13 @@
 use crate::liquidator::db_writer::RocksDB;
-use alloy_sol_types::{sol, SolEvent};
-use alloy_primitives::{address, Address};
-use reth_primitives::{RecoveredBlock, Receipt, Block};
+use alloy_primitives::{Address, address};
+use alloy_sol_types::{SolEvent, sol};
 use eyre::Result;
+use reth_primitives::{Block, Receipt, RecoveredBlock};
 use reth_tracing::tracing::debug;
 
 // Pool contarct address
-const ARBITRUM_AAVE_CONTRACT_ADDRESS: Address = address!("0x794a61358D6845594F94dc1DB02A252b5b4814aD");
+const ARBITRUM_AAVE_CONTRACT_ADDRESS: Address =
+    address!("0x794a61358D6845594F94dc1DB02A252b5b4814aD");
 
 sol! {
     event Borrow(
@@ -28,7 +29,8 @@ pub async fn process_aave_execute_borrow(
     let receipts = &block_data.1;
 
     // Iterate through transactions and their receipts
-    for (tx_idx, (tx, receipt)) in block.body().transactions.iter().zip(receipts.iter()).enumerate() {
+    for (tx_idx, (tx, receipt)) in block.body().transactions.iter().zip(receipts.iter()).enumerate()
+    {
         // Process each log in the receipt
         for (log_idx, log) in receipt.logs.iter().enumerate() {
             // Filter on dolomite contract address
@@ -39,11 +41,11 @@ pub async fn process_aave_execute_borrow(
                 }
 
                 match Borrow::decode_raw_log(log.topics(), &log.data.data) {
-                    Ok(create) => { 
+                    Ok(create) => {
                         db.save(
                             "aave_borrow",
                             &format!("{}", create.onBehalfOf),
-                            &format!("{}_{}", create.reserve, create.amount)
+                            &format!("{}_{}", create.reserve, create.amount),
                         );
                     }
                     Err(e) => {
@@ -55,4 +57,3 @@ pub async fn process_aave_execute_borrow(
     }
     Ok(())
 }
-
