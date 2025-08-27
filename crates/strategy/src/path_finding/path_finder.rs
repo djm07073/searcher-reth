@@ -508,17 +508,8 @@ impl PathFinder {
         let profit_call = getProfitCall { amount, calldata: encoded_calldata.to_owned().into() };
         let encoded = profit_call.abi_encode();
         let result = self.call_get_profit(latest_state_provider, encoded.clone());
-        if result.is_err() {
-            tracing::warn!(
-                target: "reth-exex",
-                event = "get_profit_call_failed",
-                error = ?result.err(),
-                call = ?profit_call,
-            );
-            return None;
-        }
-        match result.unwrap() {
-            ExecutionResult::Success { output: Output::Call(value), .. } => {
+        match result {
+            Ok(ExecutionResult::Success { output: Output::Call(value), .. }) => {
                 tracing::info!(
                     target: "reth-exex",
                     event = "get_profit_call_success",
@@ -527,7 +518,7 @@ impl PathFinder {
                 );
                 Some(U256::abi_decode(&value).unwrap_or_default())
             }
-            ExecutionResult::Revert { output, .. } => {
+            Ok(ExecutionResult::Revert { output, .. }) => {
                 tracing::warn!(
                     target: "reth-exex",
                     event = "get_profit_call_reverted",
@@ -536,11 +527,20 @@ impl PathFinder {
                 );
                 None
             }
-            ExecutionResult::Halt { reason, .. } => {
+            Ok(ExecutionResult::Halt { reason, .. }) => {
                 tracing::warn!(
                     target: "reth-exex",
                     event = "get_profit_call_failed",
                     error = ?reason,
+                    call = ?profit_call,
+                );
+                None
+            }
+            Err(error) => {
+                tracing::warn!(
+                    target: "reth-exex",
+                    event = "get_profit_call_failed",
+                    error = ?error,
                     call = ?profit_call,
                 );
                 None
