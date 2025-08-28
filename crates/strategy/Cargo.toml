@@ -34,6 +34,7 @@ alloy-rpc-types.workspace = true
 
 # async
 futures-util.workspace = true
+futures.workspace = true
 tokio.workspace = true
 
 # misc
@@ -43,6 +44,9 @@ reth-transaction-pool.workspace = true
 
 #searcher-reth
 searcher-reth-manager.workspace = true
+
+#rocksdb
+rocksdb.workspace = true
 
 serde_json.workspace = true
 reqwest.workspace = true

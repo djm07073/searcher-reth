@@ -45,4 +45,3 @@ searcher-reth-manager.workspace = true
 
 rayon.workspace = true
 reth-transaction-pool.workspace = true
-

@@ -32,7 +32,7 @@ use reth_transaction_pool::PoolTransaction;
 use searcher_reth_manager::{
     common::{CommonStrategyConfig, ONE_ETHER, StrategyConfig},
     gas::GasConfig,
-    types::CandidateEntry,
+    types::{CandidateEntry, StrategyCandidates},
 };
 
 use crate::path_finding::types::executeCall;
@@ -81,7 +81,11 @@ impl Strategy for PathFinder {
             chain_id = chain_id,
             "Entered prepare()"
         );
-        let candidates = self.config.load_candidates(chain_id);
+        let config_result = self.config.load_candidates(chain_id);
+        let candidates = match config_result {
+            StrategyCandidates::Candidates(c) => c,
+            _ => vec![],
+        };
         tracing::info!(
             target: "path-finder",
             event = "candidates_count",

@@ -1,5 +1,6 @@
 use std::{future::Future, sync::Arc};
 
+use crate::relayer_pool::{RelayerMessage, RelayerPool, WalletPool};
 use eyre::Result;
 use futures_util::StreamExt;
 use reth::network::NetworkInfo;
@@ -14,8 +15,6 @@ use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
 use searcher_reth_manager::SignalType;
 use searcher_reth_strategy::core::strategy::Strategy;
 use tokio::sync::broadcast;
-
-use crate::relayer_pool::{RelayerMessage, RelayerPool, WalletPool};
 
 pub struct SearcherExEx {
     pub wallet: Arc<WalletPool>,

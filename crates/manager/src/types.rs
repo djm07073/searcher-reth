@@ -36,6 +36,18 @@ pub struct CandidateEntry {
     pub initial_token: Address,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessorEntry {
+    pub table: String,
+    pub processor: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum StrategyCandidates {
+    Candidates(Vec<CandidateEntry>),
+    Processors(Vec<ProcessorEntry>),
+}
+
 pub type CandidateMap = HashMap<String, Vec<CandidateEntry>>;
 
 #[cfg(test)]
