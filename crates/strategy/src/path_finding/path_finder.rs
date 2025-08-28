@@ -509,7 +509,7 @@ impl PathFinder {
         let encoded = profit_call.abi_encode();
         let result = self.call_get_profit(latest_state_provider, encoded.clone());
         match result {
-            Ok(ExecutionResult::Success { output: Output::Call(value), .. }) => {
+            ::std::result::Result::Ok(ExecutionResult::Success { output: Output::Call(value), .. }) => {
                 tracing::info!(
                     target: "reth-exex",
                     event = "get_profit_call_success",
@@ -518,7 +518,7 @@ impl PathFinder {
                 );
                 Some(U256::abi_decode(&value).unwrap_or_default())
             }
-            Ok(ExecutionResult::Revert { output, .. }) => {
+            ::std::result::Result::Ok(ExecutionResult::Revert { output, .. }) => {
                 tracing::warn!(
                     target: "reth-exex",
                     event = "get_profit_call_reverted",
@@ -527,7 +527,7 @@ impl PathFinder {
                 );
                 None
             }
-            Ok(ExecutionResult::Halt { reason, .. }) => {
+            ::std::result::Result::Ok(ExecutionResult::Halt { reason, .. }) => {
                 tracing::warn!(
                     target: "reth-exex",
                     event = "get_profit_call_failed",
