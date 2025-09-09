@@ -75,12 +75,6 @@ impl Strategy for PathFinder {
     }
 
     fn prepare(&mut self, chain_id: u64) {
-        tracing::info!(
-            target: "path-finder",
-            event = "prepare_enter",
-            chain_id = chain_id,
-            "Entered prepare()"
-        );
         let candidates = self.config.load_candidates(chain_id);
         tracing::info!(
             target: "path-finder",
@@ -90,12 +84,6 @@ impl Strategy for PathFinder {
             "Prepare candidates for path finding",
         );
         self.candidates = candidates;
-        tracing::info!(
-            target: "path-finder",
-            event = "prepare_exit",
-            chain_id = chain_id,
-            "Exiting prepare()"
-        );
     }
 
     /// Finds profitable candidates from the pending transactions and candidates.
@@ -509,7 +497,10 @@ impl PathFinder {
         let encoded = profit_call.abi_encode();
         let result = self.call_get_profit(latest_state_provider, encoded.clone());
         match result {
-            ::std::result::Result::Ok(ExecutionResult::Success { output: Output::Call(value), .. }) => {
+            ::std::result::Result::Ok(ExecutionResult::Success {
+                output: Output::Call(value),
+                ..
+            }) => {
                 tracing::info!(
                     target: "reth-exex",
                     event = "get_profit_call_success",
